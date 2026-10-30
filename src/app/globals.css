@@ -1,26 +1,104 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+/* LadderOS design tokens */
+@theme {
+  --color-desk-950: #05080f;
+  --color-desk-900: #0a1020;
+  --color-desk-800: #0f182d;
+
+  --color-surface: #0f1729;
+  --color-surface-raised: #152037;
+  --color-surface-sunken: #0a1120;
+  --color-surface-hover: #1b2843;
+
+  --color-line: rgb(148 163 194 / 0.13);
+  --color-line-strong: rgb(148 163 194 / 0.24);
+
+  --color-fg: #e7ecf5;
+  --color-fg-muted: #9ba7bd;
+  --color-fg-subtle: #6c7991;
+
+  --color-accent: #7193ff;
+  --color-accent-strong: #5578f0;
+  --color-accent-soft: rgb(113 147 255 / 0.15);
+  --color-gold: #d9b45b;
+  --color-gold-soft: rgb(217 180 91 / 0.14);
+  --color-success: #3cc08f;
+  --color-warning: #e8a23b;
+  --color-danger: #e5484d;
+
+  --shadow-window:
+    0 30px 70px -20px rgb(0 0 0 / 0.7), 0 10px 24px -12px rgb(0 0 0 / 0.5);
+  --shadow-popover: 0 24px 60px -16px rgb(0 0 0 / 0.75);
+
+  --animate-window-in: window-in 180ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  --animate-pop-in: pop-in 150ms cubic-bezier(0.2, 0.8, 0.2, 1);
+
+  @keyframes window-in {
+    from {
+      opacity: 0;
+      transform: translateY(10px) scale(0.98);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+
+  @keyframes pop-in {
+    from {
+      opacity: 0;
+      transform: translateY(6px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+:root {
+  color-scheme: dark;
+}
+
+/* Layered so Tailwind utilities (e.g. focus:outline-none) can override. */
+@layer base {
+  body {
+    background: var(--color-desk-950);
+    color: var(--color-fg);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    transition-duration: 1ms !important;
+  }
+}
+
+@utility wallpaper-gradient {
+  background:
+    radial-gradient(ellipse 80% 60% at 72% 18%, rgb(64 96 200 / 0.26), transparent 60%),
+    radial-gradient(ellipse 55% 45% at 8% 92%, rgb(217 180 91 / 0.07), transparent 60%),
+    linear-gradient(180deg, #0a1222, #05080f);
+}
+
+@utility wallpaper-grid {
+  background-image:
+    linear-gradient(rgb(148 163 194 / 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(148 163 194 / 0.05) 1px, transparent 1px);
+  background-size: 56px 56px;
+  mask-image: radial-gradient(ellipse at center, black 25%, transparent 75%);
 }
