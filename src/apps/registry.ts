@@ -13,7 +13,8 @@ const APP_REGISTRY: Record<AppId, AppDefinition> = {
     description: "Competitive spreadsheet combat. Preview build.",
     icon: GridIcon,
     tint: "from-emerald-500 to-teal-700",
-    defaultSize: { width: 980, height: 640 },
+    // The spreadsheet is the main event: open at ~80% of the workspace.
+    window: { initial: { fraction: 0.8 }, min: { width: 640, height: 420 } },
     component: SpreadsheetWarsApp,
   },
   career: {
@@ -22,7 +23,7 @@ const APP_REGISTRY: Record<AppId, AppDefinition> = {
     description: "Your rank, level and path to the corner office.",
     icon: LadderIcon,
     tint: "from-amber-400 to-amber-700",
-    defaultSize: { width: 780, height: 620 },
+    window: { initial: { width: 780, height: 620 }, min: { width: 420, height: 360 } },
     component: CareerApp,
   },
   leaderboard: {
@@ -31,7 +32,7 @@ const APP_REGISTRY: Record<AppId, AppDefinition> = {
     description: "See who is climbing fastest.",
     icon: TrophyIcon,
     tint: "from-indigo-400 to-indigo-700",
-    defaultSize: { width: 860, height: 600 },
+    window: { initial: { width: 860, height: 600 }, min: { width: 460, height: 360 } },
     component: LeaderboardApp,
   },
   profile: {
@@ -40,7 +41,7 @@ const APP_REGISTRY: Record<AppId, AppDefinition> = {
     description: "Your badge, achievements and settings.",
     icon: IdBadgeIcon,
     tint: "from-slate-400 to-slate-700",
-    defaultSize: { width: 740, height: 620 },
+    window: { initial: { width: 740, height: 620 }, min: { width: 420, height: 360 } },
     component: ProfileApp,
   },
 };

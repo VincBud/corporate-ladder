@@ -5,6 +5,7 @@ import { APPS, getApp } from "@/apps/registry";
 import { BRAND } from "@/config/brand";
 import type { AppId } from "@/types/app";
 import type { Employee } from "@/types/employee";
+import { COMPACT_QUERY } from "../layout";
 import {
   initialWindowManagerState,
   selectFocusedAppId,
@@ -12,9 +13,12 @@ import {
   type Size,
 } from "../window-manager";
 import { DesktopIcons } from "./desktop-icons";
-import { OnboardingWidget } from "./onboarding-widget";
 import { Taskbar } from "./taskbar";
 import { Wallpaper } from "./wallpaper";
+import { AnnouncementWidget } from "./widgets/announcement-widget";
+import { MeetingWidget } from "./widgets/meeting-widget";
+import { OnboardingWidget } from "./widgets/onboarding-widget";
+import { ProductivityWidget } from "./widgets/productivity-widget";
 import { WindowFrame } from "./window-frame";
 
 const FALLBACK_BOUNDS: Size = { width: 1280, height: 720 };
@@ -25,6 +29,9 @@ export function Desktop({ employee }: { employee: Employee }) {
   const [selectedIcon, setSelectedIcon] = useState<AppId | null>(null);
   const [visitedAppIds, setVisitedAppIds] = useState<ReadonlySet<AppId>>(() => new Set());
   const workspaceRef = useRef<HTMLElement>(null);
+  // Apps register a message when closing would lose work (e.g. an active round).
+  const closeWarnings = useRef(new Map<AppId, string>());
+  const [pendingClose, setPendingClose] = useState<{ appId: AppId; message: string } | null>(null);
 
   const focusedAppId = selectFocusedAppId(windowState);
   const windowsInOpenOrder = [...windowState.windows].sort((a, b) => a.openSeq - b.openSeq);
@@ -38,12 +45,42 @@ export function Desktop({ employee }: { employee: Employee }) {
     }
   }, [focusedAppId]);
 
+  // Keep windows reachable when the viewport changes. Compact layouts are
+  // full-screen via CSS, so stored desktop geometry is left untouched there.
+  useEffect(() => {
+    const workspace = workspaceRef.current;
+    if (!workspace) return;
+    const observer = new ResizeObserver(() => {
+      if (window.matchMedia(COMPACT_QUERY).matches) return;
+      dispatch({ type: "fitToBounds", bounds: { width: workspace.clientWidth, height: workspace.clientHeight } });
+    });
+    observer.observe(workspace);
+    return () => observer.disconnect();
+  }, []);
+
   function openApp(appId: AppId) {
     const workspace = workspaceRef.current;
     const bounds = workspace ? { width: workspace.clientWidth, height: workspace.clientHeight } : FALLBACK_BOUNDS;
-    dispatch({ type: "open", appId, size: getApp(appId).defaultSize, bounds });
+    dispatch({ type: "open", appId, sizing: getApp(appId).window, bounds });
     setLauncherOpen(false);
     setVisitedAppIds((previous) => (previous.has(appId) ? previous : new Set(previous).add(appId)));
+  }
+
+  function closeWindow(appId: AppId) {
+    closeWarnings.current.delete(appId);
+    setPendingClose(null);
+    dispatch({ type: "close", appId });
+  }
+
+  function requestClose(appId: AppId) {
+    const message = closeWarnings.current.get(appId);
+    if (message) setPendingClose({ appId, message });
+    else closeWindow(appId);
+  }
+
+  function setCloseWarning(appId: AppId, message: string | null) {
+    if (message) closeWarnings.current.set(appId, message);
+    else closeWarnings.current.delete(appId);
   }
 
   function handleWindowButtonClick(appId: AppId) {
@@ -51,7 +88,9 @@ export function Desktop({ employee }: { employee: Employee }) {
   }
 
   return (
-    <div className="fixed inset-0 overflow-hidden bg-desk-950 text-fg">
+    // overflow-clip (not hidden): windows partly off-screen must never let focus
+    // or scrollIntoView scroll the whole desktop.
+    <div className="fixed inset-0 overflow-clip bg-desk-950 text-fg">
       <h1 className="sr-only">
         {BRAND.osName} desktop — {BRAND.productName}
       </h1>
@@ -66,7 +105,14 @@ export function Desktop({ employee }: { employee: Employee }) {
         }}
       >
         <DesktopIcons apps={APPS} selectedId={selectedIcon} onSelect={setSelectedIcon} onOpen={openApp} />
-        <OnboardingWidget visitedAppIds={visitedAppIds} onOpenApp={openApp} />
+
+        {/* Widget rail (large screens). Lower-priority widgets drop out on short viewports. */}
+        <div className="absolute top-4 right-4 hidden w-72 flex-col gap-3 lg:flex">
+          <MeetingWidget />
+          <OnboardingWidget visitedAppIds={visitedAppIds} onOpenApp={openApp} />
+          <AnnouncementWidget className="[@media(max-height:719px)]:hidden" />
+          <ProductivityWidget className="[@media(max-height:839px)]:hidden" />
+        </div>
 
         {windowsInOpenOrder.map((win) => {
           const app = getApp(win.appId);
@@ -80,12 +126,26 @@ export function Desktop({ employee }: { employee: Employee }) {
               zIndex={10 + windowState.windows.indexOf(win)}
               workspaceRef={workspaceRef}
               onFocus={() => dispatch({ type: "focus", appId: win.appId })}
-              onClose={() => dispatch({ type: "close", appId: win.appId })}
+              onClose={() => requestClose(win.appId)}
+              closeConfirmation={
+                pendingClose?.appId === win.appId
+                  ? {
+                      message: pendingClose.message,
+                      onConfirm: () => closeWindow(win.appId),
+                      onCancel: () => setPendingClose(null),
+                    }
+                  : null
+              }
               onMinimize={() => dispatch({ type: "minimize", appId: win.appId })}
               onToggleMaximize={() => dispatch({ type: "toggleMaximize", appId: win.appId })}
               onMove={(position) => dispatch({ type: "move", appId: win.appId, position })}
+              onResize={(rect) => dispatch({ type: "resize", appId: win.appId, rect })}
             >
-              <AppComponent employee={employee} openApp={openApp} />
+              <AppComponent
+                employee={employee}
+                openApp={openApp}
+                setCloseWarning={(message) => setCloseWarning(win.appId, message)}
+              />
             </WindowFrame>
           );
         })}

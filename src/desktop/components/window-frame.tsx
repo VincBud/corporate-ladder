@@ -1,20 +1,40 @@
 "use client";
 
-import { useRef, useState, type PointerEvent, type ReactNode, type RefObject } from "react";
+import { useEffect, useId, useRef, useState, type PointerEvent, type ReactNode, type RefObject } from "react";
 import { AppIcon } from "@/apps/app-icon";
 import type { AppDefinition } from "@/apps/types";
 import { CloseIcon, MaximizeIcon, MinimizeIcon, RestoreIcon } from "@/components/icons";
 import { cn } from "@/lib/cn";
-import { clampWindowPosition, type Point, type Size, type WindowState } from "../window-manager";
+import { COMPACT_QUERY } from "../layout";
+import {
+  clampWindowPosition,
+  resizeRect,
+  type Point,
+  type Rect,
+  type ResizeEdge,
+  type Size,
+  type WindowState,
+} from "../window-manager";
 
-/** Below this width windows are full-screen and dragging is disabled. */
-const COMPACT_QUERY = "(max-width: 767px)";
+type InteractionTarget = { kind: "drag" } | { kind: "resize"; edge: ResizeEdge };
 
-interface DragOrigin {
+type Interaction = InteractionTarget & {
   pointer: Point;
-  window: Point;
+  origin: Rect;
   bounds: Size;
-}
+};
+
+/** Invisible hit areas along each edge and corner. Corners sit above edges. */
+const RESIZE_HANDLES: ReadonlyArray<{ edge: ResizeEdge; className: string }> = [
+  { edge: "n", className: "inset-x-2.5 top-0 h-1.5 cursor-ns-resize" },
+  { edge: "s", className: "inset-x-2.5 bottom-0 h-1.5 cursor-ns-resize" },
+  { edge: "e", className: "inset-y-2.5 right-0 w-1.5 cursor-ew-resize" },
+  { edge: "w", className: "inset-y-2.5 left-0 w-1.5 cursor-ew-resize" },
+  { edge: "nw", className: "top-0 left-0 z-30 size-2.5 cursor-nwse-resize" },
+  { edge: "ne", className: "top-0 right-0 z-30 size-2.5 cursor-nesw-resize" },
+  { edge: "sw", className: "bottom-0 left-0 z-30 size-3 cursor-nesw-resize" },
+  { edge: "se", className: "right-0 bottom-0 z-30 size-3 cursor-nwse-resize" },
+];
 
 interface WindowFrameProps {
   win: WindowState;
@@ -27,7 +47,16 @@ interface WindowFrameProps {
   onMinimize: () => void;
   onToggleMaximize: () => void;
   onMove: (position: Point) => void;
+  onResize: (rect: Rect) => void;
+  /** When set, the window asks before closing (e.g. an active game round). */
+  closeConfirmation?: CloseConfirmation | null;
   children: ReactNode;
+}
+
+interface CloseConfirmation {
+  message: string;
+  onConfirm: () => void;
+  onCancel: () => void;
 }
 
 const isFromButton = (target: EventTarget) => target instanceof Element && target.closest("button") !== null;
@@ -43,50 +72,53 @@ export function WindowFrame({
   onMinimize,
   onToggleMaximize,
   onMove,
+  onResize,
+  closeConfirmation,
   children,
 }: WindowFrameProps) {
-  const dragOrigin = useRef<DragOrigin | null>(null);
-  const [isDragging, setIsDragging] = useState(false);
+  const interaction = useRef<Interaction | null>(null);
+  const [activeInteraction, setActiveInteraction] = useState<InteractionTarget["kind"] | null>(null);
   const titleId = `window-title-${win.appId}`;
 
-  function startDrag(event: PointerEvent<HTMLDivElement>) {
-    if (event.button !== 0 || win.maximized || isFromButton(event.target)) return;
-    if (window.matchMedia(COMPACT_QUERY).matches) return;
+  /** Starts a drag or resize. Disabled for maximized windows and on compact (mobile) layouts. */
+  function begin(event: PointerEvent<HTMLElement>, target: InteractionTarget) {
     const workspace = workspaceRef.current;
-    if (!workspace) return;
+    if (event.button !== 0 || win.maximized || !workspace) return;
+    if (window.matchMedia(COMPACT_QUERY).matches) return;
 
+    event.preventDefault();
     event.currentTarget.setPointerCapture(event.pointerId);
-    dragOrigin.current = {
+    interaction.current = {
+      ...target,
       pointer: { x: event.clientX, y: event.clientY },
-      window: { x: win.x, y: win.y },
+      origin: { x: win.x, y: win.y, width: win.width, height: win.height },
       bounds: { width: workspace.clientWidth, height: workspace.clientHeight },
     };
-    setIsDragging(true);
+    setActiveInteraction(target.kind);
   }
 
-  function drag(event: PointerEvent<HTMLDivElement>) {
-    const origin = dragOrigin.current;
-    if (!origin) return;
-    onMove(
-      clampWindowPosition(
-        {
-          x: origin.window.x + event.clientX - origin.pointer.x,
-          y: origin.window.y + event.clientY - origin.pointer.y,
-        },
-        win,
-        origin.bounds,
-      ),
-    );
+  function update(event: PointerEvent<HTMLElement>) {
+    const current = interaction.current;
+    if (!current) return;
+    const delta = { x: event.clientX - current.pointer.x, y: event.clientY - current.pointer.y };
+
+    if (current.kind === "drag") {
+      onMove(clampWindowPosition({ x: current.origin.x + delta.x, y: current.origin.y + delta.y }, current.origin, current.bounds));
+    } else {
+      onResize(resizeRect(current.origin, current.edge, delta, win.minSize, current.bounds));
+    }
   }
 
-  function endDrag(event: PointerEvent<HTMLDivElement>) {
-    if (!dragOrigin.current) return;
-    dragOrigin.current = null;
-    setIsDragging(false);
+  function end(event: PointerEvent<HTMLElement>) {
+    if (!interaction.current) return;
+    interaction.current = null;
+    setActiveInteraction(null);
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId);
     }
   }
+
+  const pointerTracking = { onPointerMove: update, onPointerUp: end, onPointerCancel: end };
 
   return (
     <section
@@ -101,26 +133,26 @@ export function WindowFrame({
           : { left: win.x, top: win.y, width: win.width, height: win.height, zIndex }
       }
       className={cn(
-        "absolute flex-col overflow-hidden border bg-surface shadow-window animate-window-in focus:outline-none",
+        "absolute flex-col overflow-clip border bg-surface shadow-window animate-window-in focus:outline-none",
         win.minimized ? "hidden" : "flex",
         win.maximized ? "rounded-none border-transparent" : "rounded-xl",
         isFocused ? "border-line-strong" : "border-line",
-        !isDragging && "transition-[left,top,width,height] duration-200 ease-out",
+        activeInteraction ? "select-none" : "transition-[left,top,width,height] duration-200 ease-out",
         "max-md:inset-0! max-md:h-auto! max-md:w-auto! max-md:rounded-none max-md:border-0",
       )}
     >
       <div
-        onPointerDown={startDrag}
-        onPointerMove={drag}
-        onPointerUp={endDrag}
-        onPointerCancel={endDrag}
+        onPointerDown={(event) => {
+          if (!isFromButton(event.target)) begin(event, { kind: "drag" });
+        }}
+        {...pointerTracking}
         onDoubleClick={(event) => {
           if (!isFromButton(event.target)) onToggleMaximize();
         }}
         className={cn(
-          "flex h-10 shrink-0 items-center gap-2.5 border-b border-line pr-1 pl-3 select-none",
+          "flex h-10 shrink-0 items-center gap-2.5 border-b border-line pr-1 pl-3 select-none md:touch-none",
           isFocused ? "bg-surface-raised" : "bg-surface",
-          !win.maximized && (isDragging ? "md:cursor-grabbing" : "md:cursor-grab"),
+          !win.maximized && (activeInteraction === "drag" ? "md:cursor-grabbing" : "md:cursor-grab"),
         )}
       >
         <AppIcon app={app} size="xs" />
@@ -144,7 +176,71 @@ export function WindowFrame({
         </div>
       </div>
       <div className="@container min-h-0 flex-1 overflow-auto">{children}</div>
+      {closeConfirmation && <CloseConfirmationDialog appTitle={app.title} {...closeConfirmation} />}
+
+      {!win.maximized &&
+        RESIZE_HANDLES.map(({ edge, className }) => (
+          <div
+            key={edge}
+            aria-hidden="true"
+            data-resize-edge={edge}
+            onPointerDown={(event) => begin(event, { kind: "resize", edge })}
+            {...pointerTracking}
+            className={cn("absolute z-20 touch-none max-md:hidden", className)}
+          />
+        ))}
     </section>
+  );
+}
+
+function CloseConfirmationDialog({ appTitle, message, onConfirm, onCancel }: CloseConfirmation & { appTitle: string }) {
+  const keepButtonRef = useRef<HTMLButtonElement>(null);
+  const id = useId();
+
+  useEffect(() => {
+    keepButtonRef.current?.focus();
+  }, []);
+
+  return (
+    <div className="absolute inset-0 z-40 grid place-items-center bg-desk-950/70 p-4 backdrop-blur-[2px]">
+      <div
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby={`${id}-title`}
+        aria-describedby={`${id}-message`}
+        onKeyDown={(event) => {
+          if (event.key === "Escape") {
+            event.stopPropagation();
+            onCancel();
+          }
+        }}
+        className="w-full max-w-sm animate-pop-in rounded-xl border border-line-strong bg-surface-raised p-5 shadow-popover"
+      >
+        <h3 id={`${id}-title`} className="text-sm font-semibold">
+          Close {appTitle}?
+        </h3>
+        <p id={`${id}-message`} className="mt-1.5 text-[13px] leading-relaxed text-fg-muted">
+          {message}
+        </p>
+        <div className="mt-4 flex flex-wrap justify-end gap-2">
+          <button
+            ref={keepButtonRef}
+            type="button"
+            onClick={onCancel}
+            className="rounded-lg bg-white/8 px-3 py-1.5 text-[13px] font-medium text-fg transition-colors hover:bg-white/12"
+          >
+            Keep working
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            className="rounded-lg bg-danger px-3 py-1.5 text-[13px] font-medium text-white transition-colors hover:bg-danger/85"
+          >
+            Abandon and close
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 

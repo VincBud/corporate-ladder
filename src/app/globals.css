@@ -38,6 +38,8 @@
 
   --animate-window-in: window-in 180ms cubic-bezier(0.2, 0.8, 0.2, 1);
   --animate-pop-in: pop-in 150ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  --animate-view-in: view-in 160ms ease-out;
+  --animate-cell-commit: cell-commit 700ms ease-out;
 
   @keyframes window-in {
     from {
@@ -47,6 +49,23 @@
     to {
       opacity: 1;
       transform: none;
+    }
+  }
+
+  /* Opacity only, so switching views never shifts layout. */
+  @keyframes view-in {
+    from {
+      opacity: 0;
+    }
+  }
+
+  /* Brief confirmation that an edit was committed (says nothing about correctness). */
+  @keyframes cell-commit {
+    from {
+      background-color: rgb(16 185 129 / 0.28);
+    }
+    to {
+      background-color: transparent;
     }
   }
 

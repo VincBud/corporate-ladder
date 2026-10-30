@@ -13,7 +13,7 @@ const LADDER_TOP_DOWN = [...RANKS].reverse();
 
 const XP_SOURCES = [
   { label: "Spreadsheet Wars matches", detail: "Win duels, climb faster." },
-  { label: "Daily performance reviews", detail: "Short challenges, every weekday." },
+  { label: "Daily challenges", detail: "Short tasks, every weekday." },
   { label: "Achievements", detail: "One-time bonuses for questionable feats." },
 ];
 
