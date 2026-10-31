@@ -1,25 +1,30 @@
+"use client";
+
 import { LadderIcon, LockIcon } from "@/components/icons";
 import { Badge } from "@/components/ui/badge";
-import { Notice } from "@/components/ui/notice";
 import { Panel } from "@/components/ui/panel";
 import { ProgressBar } from "@/components/ui/progress-bar";
 import { RANKS } from "@/career/ranks";
 import { getCareerSnapshot, totalXpForLevel } from "@/career/progression";
 import { cn } from "@/lib/cn";
 import { formatNumber, formatSalary } from "@/lib/format";
+import { useCareer } from "@/performance/use-career";
 import type { AppProps } from "../types";
+import { PerformanceRecord } from "./performance-record";
 
 const LADDER_TOP_DOWN = [...RANKS].reverse();
 
 const XP_SOURCES = [
-  { label: "Spreadsheet Wars matches", detail: "Win duels, climb faster." },
-  { label: "Daily challenges", detail: "Short tasks, every weekday." },
-  { label: "Achievements", detail: "One-time bonuses for questionable feats." },
+  { label: "Reconciliation Rush", detail: "1 XP per 20 points scored. Each case pays once.", live: true },
+  { label: "Spreadsheet Wars duels", detail: "Win duels, climb faster.", live: false },
+  { label: "Daily challenges", detail: "Short tasks, every weekday.", live: false },
+  { label: "Achievements", detail: "One-time bonuses for questionable feats.", live: false },
 ];
 
 export function CareerApp({ employee, openApp }: AppProps) {
   const { progress, rank, nextRank, xpToNextRank } = getCareerSnapshot(employee.xp);
   const currentIndex = RANKS.findIndex((r) => r.id === rank.id);
+  const career = useCareer();
 
   return (
     <div className="space-y-4 p-4 @xl:p-6">
@@ -57,6 +62,8 @@ export function CareerApp({ employee, openApp }: AppProps) {
           />
         </div>
       </section>
+
+      <PerformanceRecord career={career} onPlay={() => openApp("spreadsheet-wars")} />
 
       <div className="grid gap-4 @2xl:grid-cols-[1fr_18rem]">
         <Panel title="The ladder" description="Every rung from intern to the corner office.">
@@ -131,19 +138,21 @@ export function CareerApp({ employee, openApp }: AppProps) {
                     <p className="text-[13px]">{source.label}</p>
                     <p className="text-xs text-fg-subtle">{source.detail}</p>
                   </div>
-                  <Badge>Planned</Badge>
+                  {source.live ? <Badge tone="success">Live</Badge> : <Badge>Planned</Badge>}
                 </li>
               ))}
             </ul>
-            <Notice title="XP can't be earned yet" className="mt-3">
-              Progression goes live with the first playable game. Until then, the ladder is aspirational. Like most ladders.
-            </Notice>
+            <p className="mt-3 text-xs text-fg-subtle">
+              {career.source === "cloud"
+                ? "Verified XP is saved to your account. Quarterly Performance Reviews come later."
+                : "Guest progress is saved in this browser only. Sign in from Employee Profile for verified progress."}
+            </p>
             <button
               type="button"
               onClick={() => openApp("spreadsheet-wars")}
               className="mt-3 w-full rounded-lg bg-accent-strong px-3 py-2 text-[13px] font-medium text-white transition-colors hover:bg-accent"
             >
-              Preview Spreadsheet Wars
+              Open Spreadsheet Wars
             </button>
           </Panel>
         </div>

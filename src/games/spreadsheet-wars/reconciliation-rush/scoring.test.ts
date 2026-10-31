@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { addressLabel, cellKey } from "../sheet";
 import { generateChallenge } from "./generate";
-import { correctionAccuracy, gradeRound, managerFeedback, previewCorporateXp } from "./report";
+import { correctionAccuracy, gradeRound, managerFeedback } from "./report";
 import { DIFFICULTY_POINTS, INCORRECT_CORRECTION_PENALTY, MAX_TIME_BONUS, calculateTimeBonus, scoreRound } from "./scoring";
 import type { Challenge } from "./types";
 import { evaluateRound, type PlayerEntries } from "./validate";
@@ -112,10 +112,8 @@ describe("validation and scoring", () => {
     expect(calculateTimeBonus(30_000, DURATION)).toBe(100);
   });
 
-  it("gives deterministic manager feedback and a non-binding XP preview", () => {
+  it("gives deterministic manager feedback", () => {
     expect(managerFeedback("Needs Improvement", "RR-X")).toBe(managerFeedback("Needs Improvement", "RR-X"));
-    expect(previewCorporateXp(1000)).toBe(50);
-    expect(previewCorporateXp(-10)).toBe(0);
   });
 
   it("solves every generated challenge with its own solution", () => {

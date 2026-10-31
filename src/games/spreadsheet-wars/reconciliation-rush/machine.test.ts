@@ -6,16 +6,17 @@ import {
   isExpired,
   remainingMs,
   spreadsheetWarsReducer as reduce,
+  type LocalActiveRound,
   type SpreadsheetWarsState,
 } from "./machine";
 
 const T0 = 1_000;
 
-function playing(): Extract<SpreadsheetWarsState, { phase: "playing" }> {
+function playing(): { phase: "playing"; round: LocalActiveRound } {
   const briefing = reduce(initialSpreadsheetWarsState, { type: "openBriefing", seed: "RR-MACHINE" });
-  const state = reduce(briefing, { type: "start", now: T0 });
-  if (state.phase !== "playing") throw new Error("expected playing");
-  return state;
+  const state = reduce(briefing, { type: "start", now: T0, sessionId: "test-session" });
+  if (state.phase !== "playing" || state.round.mode !== "local") throw new Error("expected a local round");
+  return { phase: "playing", round: state.round };
 }
 
 describe("Spreadsheet Wars state machine", () => {
@@ -23,7 +24,7 @@ describe("Spreadsheet Wars state machine", () => {
     let state: SpreadsheetWarsState = initialSpreadsheetWarsState;
     state = reduce(state, { type: "openBriefing", seed: "RR-FLOW" });
     expect(state.phase).toBe("briefing");
-    state = reduce(state, { type: "start", now: T0 });
+    state = reduce(state, { type: "start", now: T0, sessionId: "test-session" });
     expect(state.phase).toBe("playing");
     state = reduce(state, { type: "submit", now: T0 + 10_000 });
     expect(state.phase).toBe("results");
@@ -41,7 +42,7 @@ describe("Spreadsheet Wars state machine", () => {
   it("does not start the timer before Start", () => {
     const briefing = reduce(initialSpreadsheetWarsState, { type: "openBriefing", seed: "RR-WAIT" });
     expect(reduce(briefing, { type: "tick", now: 10_000_000 })).toBe(briefing);
-    const started = reduce(briefing, { type: "start", now: 10_000_000 });
+    const started = reduce(briefing, { type: "start", now: 10_000_000, sessionId: "test-session" });
     expect(started.phase === "playing" && remainingMs(started.round, 10_000_000)).toBe(ROUND_DURATION_MS);
   });
 

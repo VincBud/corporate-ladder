@@ -15,6 +15,10 @@ npm test         # Vitest: game logic
 npm run build
 ```
 
+### Backend (optional)
+
+Without configuration the app runs guest-only. To enable accounts and server-verified play, follow [docs/backend.md](docs/backend.md): create a Supabase project, apply `supabase/migrations`, and fill in `.env.local` from `.env.example`.
+
 ## Project structure
 
 ```
@@ -34,8 +38,13 @@ src/
         scoring.ts     Game score (not XP)
         report.ts      Task Performance Report grade/feedback, XP preview
         machine.ts     Lobby → briefing → playing → results state machine
-  career/              Ranks, XP curve, achievements (pure functions)
+        result.ts      Finished round → career history record (no answer keys)
+  career/              Ranks, XP curve, XP awards, promotions (pure functions)
+  performance/         Player history: schema, ledger, stats selectors, store + hook
+  auth/                Browser auth state (Supabase email + password)
+  server/              Trusted server code: verified rounds, career API helpers
   services/            Data access layer — the only place backends get wired in
+    career-repository.ts  Career persistence interface + localStorage adapter
   mocks/               Clearly labeled mock data (never presented as live)
   components/          Shared UI primitives, icons and brand marks
   config/              Fictional brand identity
@@ -64,8 +73,22 @@ The first playable game, inside Spreadsheet Wars. Fix five errors in a 12–20 r
 - **Task Performance Report:** the results screen after a single minigame round (score, grade, manager feedback). It is short-term feedback and saves nothing.
 - **Quarterly Performance Reviews (planned, not implemented):** recurring career appraisals at the end of real calendar quarters (Q1 Jan–Mar, Q2 Apr–Jun, Q3 Jul–Sep, Q4 Oct–Dec). They will drive long-term progression: promotion eligibility, bonuses, objectives and manager conversations.
 
-A single round must never be treated as a quarterly review, and rounds don't award Corporate XP yet. The report shows an XP preview that is explicitly not saved.
+A single round must never be treated as a quarterly review. Rounds award Corporate XP, which feeds the existing rank ladder, but they never count as an appraisal.
+
+## Corporate progression
+
+The layers are kept separate so new minigames and a server backend can be added without a redesign:
+
+1. **Game scoring:** each game's own rules (e.g. `reconciliation-rush/scoring.ts`).
+2. **XP calculation:** `career/xp.ts`. 1 XP per 20 score points, rounded down. A seeded case pays out only once.
+3. **Career progression:** `career/progression.ts` and `career/ranks.ts`. The existing level curve and rank ladder; a promotion is a rank change.
+4. **Performance history:** `performance/`. Versioned records, an idempotent ledger keyed by session id, and stats selectors.
+5. **Persistence:** `services/career-repository.ts`. An async repository interface. Today it's localStorage; later it becomes server-backed.
+
+Total XP is derived from the history (the employee's starting XP plus the XP of each recorded round), so there is no separate counter to drift. Personal bests are compared as a share of the round's maximum score, and only within the same game, difficulty and scoring version.
+
+Progress is saved in this browser only. This is solo progression, not a security boundary: anyone can edit their own localStorage.
 
 ## Status
 
-LadderOS desktop shell with four applications. Reconciliation Rush v0.1 is playable (solo, not persisted). No backend or authentication yet. Leaderboard data is fictional and labeled as such.
+LadderOS desktop shell with four applications. Reconciliation Rush is playable, and completed rounds award Corporate XP saved in the browser. No backend or authentication yet. Leaderboard data is fictional and labeled as such.

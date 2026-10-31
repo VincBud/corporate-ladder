@@ -4,6 +4,9 @@ import { useEffect, useReducer, useRef, useState } from "react";
 import { APPS, getApp } from "@/apps/registry";
 import { BRAND } from "@/config/brand";
 import type { AppId } from "@/types/app";
+import { getAuthStore, useAuth } from "@/auth/use-auth";
+import { employeeFor } from "@/performance/player";
+import { getCareerStore, useActiveCareerScope, useCareer } from "@/performance/use-career";
 import type { Employee } from "@/types/employee";
 import { COMPACT_QUERY } from "../layout";
 import {
@@ -14,6 +17,8 @@ import {
 } from "../window-manager";
 import { DesktopIcons } from "./desktop-icons";
 import { Taskbar } from "./taskbar";
+import { AuthNoticeToast } from "./auth-notice-toast";
+import { PromotionToast } from "./promotion-toast";
 import { Wallpaper } from "./wallpaper";
 import { AnnouncementWidget } from "./widgets/announcement-widget";
 import { MeetingWidget } from "./widgets/meeting-widget";
@@ -23,7 +28,13 @@ import { WindowFrame } from "./window-frame";
 
 const FALLBACK_BOUNDS: Size = { width: 1280, height: 720 };
 
-export function Desktop({ employee }: { employee: Employee }) {
+export function Desktop({ employee: baseEmployee }: { employee: Employee }) {
+  // One player state for every app: the guest (local XP) or the signed-in
+  // account (server-verified XP). Rank and level are derived from employee.xp.
+  const career = useCareer();
+  const auth = useAuth();
+  const careerScope = useActiveCareerScope();
+  const employee: Employee = employeeFor(baseEmployee, career);
   const [windowState, dispatch] = useReducer(windowManagerReducer, initialWindowManagerState);
   const [launcherOpen, setLauncherOpen] = useState(false);
   const [selectedIcon, setSelectedIcon] = useState<AppId | null>(null);
@@ -149,6 +160,12 @@ export function Desktop({ employee }: { employee: Employee }) {
             </WindowFrame>
           );
         })}
+        {career.promotion && careerScope && (
+          <PromotionToast change={career.promotion} onDismiss={() => getCareerStore(careerScope).dismissPromotion()} />
+        )}
+        {auth.notice && (
+          <AuthNoticeToast notice={auth.notice} onOpenProfile={() => openApp("profile")} onDismiss={() => getAuthStore().dismissNotice()} />
+        )}
       </main>
 
       <Taskbar

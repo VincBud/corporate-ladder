@@ -1,3 +1,5 @@
+"use client";
+
 import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Notice } from "@/components/ui/notice";
@@ -5,6 +7,7 @@ import { getCareerSnapshot } from "@/career/progression";
 import { cn } from "@/lib/cn";
 import { formatNumber, formatPercent } from "@/lib/format";
 import { getLeaderboard } from "@/services/leaderboard-service";
+import { useCareer } from "@/performance/use-career";
 import type { AppProps } from "../types";
 
 const ENTRIES = getLeaderboard();
@@ -23,6 +26,7 @@ const SCOPES = [
 
 export function LeaderboardApp({ employee, openApp }: AppProps) {
   const you = getCareerSnapshot(employee.xp);
+  const roundsPlayed = useCareer().records.length;
 
   return (
     <div className="space-y-4 p-4 @xl:p-6">
@@ -115,7 +119,7 @@ export function LeaderboardApp({ employee, openApp }: AppProps) {
             {employee.displayName} <Badge className="ml-1">Unranked</Badge>
           </p>
           <p className="text-xs text-fg-muted">
-            {you.rank.title} · Level {you.progress.level} · 0 matches played
+            {you.rank.title} · Level {you.progress.level} · {roundsPlayed} {roundsPlayed === 1 ? "round" : "rounds"} played (not ranked yet)
           </p>
         </div>
         <button

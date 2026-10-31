@@ -55,11 +55,3 @@ export function managerFeedback(grade: PerformanceGrade, seed: string): string {
   const options = FEEDBACK[grade];
   return options[hashSeed(`${seed}:${grade}`) % options.length];
 }
-
-/**
- * Preview of Corporate XP this round might be worth once accounts exist.
- * Display only: nothing is saved and career progression is unchanged.
- */
-export function previewCorporateXp(score: number): number {
-  return Math.floor(Math.max(0, score) / 20);
-}

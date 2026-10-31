@@ -65,3 +65,30 @@ export function getCareerSnapshot(xp: number): CareerSnapshot {
     xpToNextRank: nextRank ? Math.max(0, totalXpForLevel(nextRank.minLevel) - xp) : 0,
   };
 }
+
+export interface ProgressChange {
+  xpBefore: number;
+  xpAfter: number;
+  levelBefore: number;
+  levelAfter: number;
+  rankBefore: Rank;
+  rankAfter: Rank;
+  leveledUp: boolean;
+  /** True when the rank changed (a promotion), not just the level. */
+  promoted: boolean;
+}
+
+export function describeProgressChange(xpBefore: number, xpAfter: number): ProgressChange {
+  const before = getCareerSnapshot(xpBefore);
+  const after = getCareerSnapshot(xpAfter);
+  return {
+    xpBefore,
+    xpAfter,
+    levelBefore: before.progress.level,
+    levelAfter: after.progress.level,
+    rankBefore: before.rank,
+    rankAfter: after.rank,
+    leveledUp: after.progress.level > before.progress.level,
+    promoted: after.rank.id !== before.rank.id && after.rank.minLevel > before.rank.minLevel,
+  };
+}

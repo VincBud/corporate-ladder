@@ -24,11 +24,13 @@ const COLUMN_WIDTHS = ["min-w-22", "min-w-34", "min-w-48", "min-w-14", "min-w-26
 interface RoundScreenProps {
   round: ActiveRound;
   dispatch: Dispatch<SpreadsheetWarsAction>;
+  /** Verified rounds: asks the server for the hint. Rejects with a readable message. */
+  onRequestVerifiedHint?: () => Promise<void>;
 }
 
 type Dialog = "submit" | "abandon" | null;
 
-export function RoundScreen({ round, dispatch }: RoundScreenProps) {
+export function RoundScreen({ round, dispatch, onRequestVerifiedHint }: RoundScreenProps) {
   const { challenge } = round;
   const id = useId();
   const gridRef = useRef<HTMLTableElement>(null);
@@ -42,6 +44,7 @@ export function RoundScreen({ round, dispatch }: RoundScreenProps) {
   const [docsOverlay, setDocsOverlay] = useState(false);
   const [hintHidden, setHintHidden] = useState(false);
   const [revealSignal, setRevealSignal] = useState(0);
+  const [hintPending, setHintPending] = useState(false);
 
   const now = useRoundClock(round.startedAt, round.durationMs, (time) => dispatch({ type: "tick", now: time }));
   const remaining = remainingMs(round, now);
@@ -130,10 +133,20 @@ export function RoundScreen({ round, dispatch }: RoundScreenProps) {
   }
 
   function requestAssistance() {
+    setHintHidden(false);
+    if (round.mode === "verified" && onRequestVerifiedHint) {
+      // The server picks an unresolved discrepancy; the browser has no answer key.
+      setHintPending(true);
+      setStatus("Asking Finance Operations…");
+      onRequestVerifiedHint().then(
+        () => setStatus("Assistance requested. Finance Operations replied above the sheet."),
+        (error: Error) => setStatus(error.message),
+      ).finally(() => setHintPending(false));
+      return;
+    }
     // The reducer picks an unresolved discrepancy from the current sheet and
     // enforces one use per round and the deadline. The clock is unaffected.
     dispatch({ type: "requestHint", now: performance.now() });
-    setHintHidden(false);
     setStatus("Assistance requested. Finance Operations replied above the sheet.");
   }
 
@@ -162,7 +175,14 @@ export function RoundScreen({ round, dispatch }: RoundScreenProps) {
       {/* Round header */}
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-slate-200 bg-slate-50 px-3 py-2">
         <div className="min-w-0 flex-1">
-          <p className="truncate text-[13px] font-semibold text-slate-900">Reconciliation Rush</p>
+          <p className="truncate text-[13px] font-semibold text-slate-900">
+            Reconciliation Rush
+            {round.mode === "verified" && (
+              <span className="ml-2 rounded-full bg-emerald-100 px-1.5 py-0.5 align-middle text-[10px] font-semibold text-emerald-800">
+                Verified
+              </span>
+            )}
+          </p>
           <p className="truncate text-[11px] text-slate-500">
             {challenge.fileName} · {challenge.department}
           </p>
@@ -195,11 +215,11 @@ export function RoundScreen({ round, dispatch }: RoundScreenProps) {
           <button
             type="button"
             onClick={requestAssistance}
-            disabled={expired || hintsLeft === 0}
+            disabled={expired || hintsLeft === 0 || hintPending}
             title={hintsLeft > 0 ? "Finance Operations will point you to one unresolved row. The clock keeps running." : "Assistance already used this round"}
             className="h-8 rounded-md border border-sky-200 bg-sky-50 px-2.5 text-[12px] font-medium text-sky-800 transition-colors hover:bg-sky-100 disabled:border-slate-200 disabled:bg-white disabled:text-slate-400"
           >
-            Request Assistance ({hintsLeft}/{HINTS_PER_ROUND})
+            {hintPending ? "Requesting…" : `Request Assistance (${hintsLeft}/${HINTS_PER_ROUND})`}
           </button>
           <button
             type="button"

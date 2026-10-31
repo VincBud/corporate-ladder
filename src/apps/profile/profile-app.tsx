@@ -10,12 +10,15 @@ import { ACHIEVEMENTS } from "@/career/achievements";
 import { getCareerSnapshot } from "@/career/progression";
 import { cn } from "@/lib/cn";
 import { formatIsoDate, formatNumber } from "@/lib/format";
+import { useCareer } from "@/performance/use-career";
 import type { AppProps } from "../types";
+import { AccountPanel } from "./account-panel";
 
 export function ProfileApp({ employee }: AppProps) {
   const { progress, rank } = getCareerSnapshot(employee.xp);
   const unlocked = new Set(employee.unlockedAchievements);
   const id = useId();
+  const career = useCareer();
 
   const details = [
     ["Department", employee.department],
@@ -28,7 +31,8 @@ export function ProfileApp({ employee }: AppProps) {
     ["Level", formatNumber(progress.level)],
     ["Corporate XP", formatNumber(progress.xp)],
     ["Achievements", `${unlocked.size} / ${ACHIEVEMENTS.length}`],
-    ["Matches played", "0"],
+    // "—" until the history has loaded, so a slow load never reads as "0 rounds".
+    ["Rounds played", career.status === "ready" ? formatNumber(career.records.length) : "—"],
   ] as const;
 
   const settings = [
@@ -57,7 +61,7 @@ export function ProfileApp({ employee }: AppProps) {
             <p className="font-mono text-xs text-fg-subtle">Employee #{employee.employeeNumber}</p>
             <div className="mt-2 flex flex-wrap gap-1.5">
               <Badge tone="gold">{rank.title}</Badge>
-              {employee.isGuest && <Badge>Guest · progress not saved</Badge>}
+              {employee.isGuest ? <Badge>Guest · saved in this browser only</Badge> : <Badge tone="success">Cloud account</Badge>}
             </div>
           </div>
         </div>
@@ -79,6 +83,8 @@ export function ProfileApp({ employee }: AppProps) {
           </div>
         ))}
       </dl>
+
+      <AccountPanel career={career} />
 
       <Panel title="Achievements" description={`${unlocked.size} of ${ACHIEVEMENTS.length} unlocked`}>
         <ul className="grid gap-2 @lg:grid-cols-2">
@@ -113,20 +119,8 @@ export function ProfileApp({ employee }: AppProps) {
         </ul>
       </Panel>
 
-      <Panel title="Settings" description="Accounts aren't available yet, so settings can't be changed or saved.">
+      <Panel title="Settings" description="Notification and visibility settings aren't available yet.">
         <div className="divide-y divide-line">
-          <div className="flex flex-wrap items-center justify-between gap-3 pb-3">
-            <label htmlFor={`${id}-name`} className="text-[13px]">
-              Display name
-            </label>
-            <input
-              id={`${id}-name`}
-              value={employee.displayName}
-              disabled
-              readOnly
-              className="w-full max-w-60 rounded-md border border-line bg-surface-sunken px-2.5 py-1.5 text-[13px] text-fg-muted"
-            />
-          </div>
           {settings.map((setting) => (
             <div key={setting.key} className="flex items-start justify-between gap-4 py-3">
               <div>
@@ -145,16 +139,7 @@ export function ProfileApp({ employee }: AppProps) {
               />
             </div>
           ))}
-          <div className="flex flex-wrap items-center justify-between gap-3 pt-3">
-            <p className="text-xs text-fg-subtle">Sponsored placements, when they exist, will always be clearly labeled.</p>
-            <button
-              type="button"
-              disabled
-              className="rounded-lg bg-white/6 px-3 py-1.5 text-xs font-medium text-fg-subtle"
-            >
-              Sign in to save progress · Coming soon
-            </button>
-          </div>
+          <p className="pt-3 text-xs text-fg-subtle">Sponsored placements, when they exist, will always be clearly labeled.</p>
         </div>
       </Panel>
     </div>

@@ -7,13 +7,15 @@ import { GAME_MODES, type GameMode } from "@/games/spreadsheet-wars/modes";
 import { cn } from "@/lib/cn";
 
 interface SpreadsheetWarsLobbyProps {
+  /** "verified": signed in, results scored by the server. "guest": local practice. */
+  playMode: "verified" | "guest" | "loading";
   onPlayReconciliationRush: () => void;
   onOpenWorkspace: () => void;
   /** Move focus to the primary action on mount (when returning from another screen). */
   focusOnMount: boolean;
 }
 
-export function SpreadsheetWarsLobby({ onPlayReconciliationRush, onOpenWorkspace, focusOnMount }: SpreadsheetWarsLobbyProps) {
+export function SpreadsheetWarsLobby({ playMode, onPlayReconciliationRush, onOpenWorkspace, focusOnMount }: SpreadsheetWarsLobbyProps) {
   const playButtonRef = useRef<HTMLButtonElement>(null);
   const id = useId();
   const availableCount = GAME_MODES.filter((mode) => mode.status === "available").length;
@@ -37,8 +39,22 @@ export function SpreadsheetWarsLobby({ onPlayReconciliationRush, onOpenWorkspace
             <p className="text-xs text-fg-muted">Competitive spreadsheet combat for ambitious professionals.</p>
           </div>
         </div>
-        <Badge tone="accent">Season 0 · Solo preview</Badge>
+        {playMode === "verified" ? (
+          <Badge tone="success">Verified play · Cloud account</Badge>
+        ) : playMode === "guest" ? (
+          <Badge>Guest practice · This browser only</Badge>
+        ) : (
+          <Badge>Checking your badge…</Badge>
+        )}
       </header>
+
+      <p className="text-xs leading-relaxed text-fg-muted">
+        {playMode === "verified"
+          ? "Your rounds are scored by the server and saved to your account."
+          : playMode === "guest"
+            ? "Guest results are saved in this browser only. They aren't verified or ranked. Sign in from Employee Profile for verified play."
+            : "Restoring your session…"}
+      </p>
 
       <section aria-labelledby={`${id}-modes`}>
         <div className="flex items-baseline justify-between gap-3">
@@ -56,6 +72,7 @@ export function SpreadsheetWarsLobby({ onPlayReconciliationRush, onOpenWorkspace
               mode={mode}
               playButtonRef={mode.id === "reconciliation-rush" ? playButtonRef : undefined}
               onPlay={mode.id === "reconciliation-rush" ? onPlayReconciliationRush : undefined}
+              disabled={playMode === "loading"}
             />
           ))}
         </ul>
@@ -89,10 +106,11 @@ export function SpreadsheetWarsLobby({ onPlayReconciliationRush, onOpenWorkspace
 interface ModeCardProps {
   mode: GameMode;
   onPlay?: () => void;
+  disabled?: boolean;
   playButtonRef?: RefObject<HTMLButtonElement | null>;
 }
 
-function ModeCard({ mode, onPlay, playButtonRef }: ModeCardProps) {
+function ModeCard({ mode, onPlay, playButtonRef, disabled = false }: ModeCardProps) {
   const playable = mode.status === "available" && onPlay;
 
   return (
@@ -135,8 +153,9 @@ function ModeCard({ mode, onPlay, playButtonRef }: ModeCardProps) {
           ref={playButtonRef}
           type="button"
           onClick={onPlay}
+          disabled={disabled}
           aria-label={`Play ${mode.name}`}
-          className="mt-4 flex items-center justify-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-2 text-[13px] font-medium text-white transition-colors hover:bg-emerald-500"
+          className="mt-4 flex items-center justify-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-2 text-[13px] font-medium text-white transition-colors hover:bg-emerald-500 disabled:opacity-50"
         >
           Play
           <ChevronRightIcon className="size-4" />

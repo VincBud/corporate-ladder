@@ -1,0 +1,21 @@
+import { NextResponse } from "next/server";
+import { apiError, rateLimit, readJsonBody, requireUser, toErrorResponse } from "@/server/http";
+import { assertSessionId } from "@/server/rounds/payload";
+import { getRoundService } from "@/server/services";
+
+/** Submits the final sheet. The server scores it; repeats return the stored result. */
+export async function POST(request: Request, { params }: { params: Promise<{ sessionId: string }> }) {
+  const auth = await requireUser();
+  if (auth instanceof Response) return auth;
+  const limited = rateLimit("submit", auth.user.id, 30);
+  if (limited) return limited;
+  const service = getRoundService();
+  if (!service) return apiError(503, "not_configured", "Verified play isn't configured on this server.");
+  try {
+    const sessionId = assertSessionId((await params).sessionId);
+    const body = await readJsonBody(request);
+    return NextResponse.json(await service.submitRound(auth.user.id, sessionId, body), { headers: { "Cache-Control": "no-store" } });
+  } catch (error) {
+    return toErrorResponse(error);
+  }
+}

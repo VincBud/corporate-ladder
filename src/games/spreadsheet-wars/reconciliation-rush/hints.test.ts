@@ -7,6 +7,7 @@ import {
   hintsRemaining,
   initialSpreadsheetWarsState,
   spreadsheetWarsReducer as reduce,
+  type LocalActiveRound,
   type SpreadsheetWarsState,
 } from "./machine";
 import type { Challenge, PlantedError } from "./types";
@@ -15,12 +16,12 @@ import { evaluateRound } from "./validate";
 const T0 = 5_000;
 const SEEDS = Array.from({ length: 400 }, (_, i) => `HINT-${i}`);
 
-type Playing = Extract<SpreadsheetWarsState, { phase: "playing" }>;
+type Playing = { phase: "playing"; round: LocalActiveRound };
 
 function playing(seed = "RR-HINTS"): Playing {
-  const state = reduce(reduce(initialSpreadsheetWarsState, { type: "openBriefing", seed }), { type: "start", now: T0 });
-  if (state.phase !== "playing") throw new Error("expected playing");
-  return state;
+  const state = reduce(reduce(initialSpreadsheetWarsState, { type: "openBriefing", seed }), { type: "start", now: T0, sessionId: "test-session" });
+  if (state.phase !== "playing" || state.round.mode !== "local") throw new Error("expected a local round");
+  return { phase: "playing", round: state.round };
 }
 
 const fix = (challenge: Challenge, errors: readonly PlantedError[]) =>
@@ -140,10 +141,12 @@ describe("hint state machine", () => {
   });
 
   it("keeps the first hint even if the sheet changes afterwards", () => {
-    const first = reduce(playing(), { type: "requestHint", now: T0 + 1_000 });
+    const start = playing();
+    const { challenge } = start.round;
+    const first = reduce(start, { type: "requestHint", now: T0 + 1_000 });
     if (first.phase !== "playing") throw new Error();
-    const target = first.round.challenge.errors.find((e) => e.id === first.round.hint!.errorId)!;
-    const solution = first.round.challenge.cells.get(cellKey(target.address))!.solution;
+    const target = challenge.errors.find((e) => e.id === first.round.hint!.errorId)!;
+    const solution = challenge.cells.get(cellKey(target.address))!.solution;
     const after = reduce(first, { type: "commitCell", address: target.address, content: solution, now: T0 + 2_000 });
     expect(after.phase === "playing" && after.round.hint).toEqual(first.round.hint);
     expect(reduce(after, { type: "requestHint", now: T0 + 3_000 })).toBe(after);
@@ -199,7 +202,7 @@ describe("hint state machine", () => {
 
   it("resets for every new round", () => {
     const used = reduce(reduce(playing(), { type: "requestHint", now: T0 + 1_000 }), { type: "submit", now: T0 + 2_000 });
-    const again = reduce(reduce(used, { type: "openBriefing", seed: "RR-NEXT" }), { type: "start", now: T0 + 10_000 });
+    const again = reduce(reduce(used, { type: "openBriefing", seed: "RR-NEXT" }), { type: "start", now: T0 + 10_000, sessionId: "test-session" });
     expect(again.phase).toBe("playing");
     if (again.phase !== "playing") return;
     expect(again.round.hint).toBeNull();
@@ -210,9 +213,9 @@ describe("hint state machine", () => {
 
   it("produces a valid hint at any point of a round for many seeds", () => {
     for (const seed of SEEDS.slice(0, 150)) {
-      let state: SpreadsheetWarsState = playing(seed);
-      if (state.phase !== "playing") throw new Error();
-      const { challenge } = state.round;
+      const start = playing(seed);
+      const { challenge } = start.round;
+      let state: SpreadsheetWarsState = start;
       // Resolve a couple of errors first, as a player might.
       for (const error of challenge.errors.slice(0, 2)) {
         state = reduce(state, { type: "commitCell", address: error.address, content: challenge.cells.get(cellKey(error.address))!.solution, now: T0 + 1 });

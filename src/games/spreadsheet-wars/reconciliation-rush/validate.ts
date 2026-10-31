@@ -11,6 +11,7 @@
 import { evaluateCell, normalizeContent, type CellValue } from "../formula";
 import { cellKey, type CellAddress } from "../sheet";
 import { solutionSource, valuesMatch, withOverride } from "./generate";
+import type { PublicChallenge } from "./public";
 import type { Challenge, PlantedError } from "./types";
 
 /** Committed player contents keyed by cellKey. Cells not present keep their initial content. */
@@ -47,12 +48,13 @@ export interface RoundEvaluation {
   editedCount: number;
 }
 
-export function contentAt(challenge: Challenge, entries: PlayerEntries, address: CellAddress): string {
+/** Works with full or public challenges: only initial contents are read. */
+export function contentAt(challenge: Pick<PublicChallenge, "cells">, entries: PlayerEntries, address: CellAddress): string {
   const key = cellKey(address);
   return entries[key] ?? challenge.cells.get(key)?.initial ?? "";
 }
 
-export function isEdited(challenge: Challenge, entries: PlayerEntries, address: CellAddress): boolean {
+export function isEdited(challenge: Pick<PublicChallenge, "cells">, entries: PlayerEntries, address: CellAddress): boolean {
   const cell = challenge.cells.get(cellKey(address));
   if (!cell) return false;
   return normalizeContent(contentAt(challenge, entries, address)) !== normalizeContent(cell.initial);

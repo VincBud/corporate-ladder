@@ -2,12 +2,12 @@
 
 import { useId, useState } from "react";
 import { CloseIcon } from "@/components/icons";
-import type { Challenge } from "@/games/spreadsheet-wars/reconciliation-rush/types";
+import type { PublicChallenge } from "@/games/spreadsheet-wars/reconciliation-rush/public";
 import { cn } from "@/lib/cn";
 import { SourceDocumentCard } from "./source-document";
 
 interface DocumentsPanelProps {
-  challenge: Challenge;
+  challenge: Pick<PublicChallenge, "documents">;
   /** Row of the active cell; its document is shown by default. */
   selectedRow: number;
   onClose: () => void;

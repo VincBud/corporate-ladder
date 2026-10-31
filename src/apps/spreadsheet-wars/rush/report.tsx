@@ -6,11 +6,12 @@ import type { FinishedRound } from "@/games/spreadsheet-wars/reconciliation-rush
 import {
   correctionAccuracy,
   managerFeedback,
-  previewCorporateXp,
   type PerformanceGrade,
 } from "@/games/spreadsheet-wars/reconciliation-rush/report";
+import { toGameResult } from "@/games/spreadsheet-wars/reconciliation-rush/result";
 import { cn } from "@/lib/cn";
 import { formatNumber, formatPercent } from "@/lib/format";
+import { getCareerStore, useCareerSession } from "@/performance/use-career";
 import { formatDuration } from "./format";
 import { ScreenWithActions } from "./screen-layout";
 
@@ -85,9 +86,12 @@ export function TaskPerformanceReport({ round, onPlayAgain, onReview, onLobby }:
             Case {challenge.seed} · {challenge.fileName}
           </p>
         </div>
-        <Badge tone={round.outcome === "completed" ? "accent" : "warning"}>
-          {round.outcome === "completed" ? "Submitted" : "Time expired"}
-        </Badge>
+        <div className="flex flex-wrap gap-1.5">
+          {round.mode === "verified" ? <Badge tone="success">Verified by server</Badge> : <Badge>Guest practice</Badge>}
+          <Badge tone={round.outcome === "completed" ? "accent" : "warning"}>
+            {round.outcome === "completed" ? "Submitted" : "Time expired"}
+          </Badge>
+        </div>
       </header>
 
       <section aria-labelledby={`${id}-score`} className="grid gap-4 @lg:grid-cols-[auto_1fr] @lg:items-center">
@@ -106,6 +110,8 @@ export function TaskPerformanceReport({ round, onPlayAgain, onReview, onLobby }:
           </blockquote>
         </div>
       </section>
+
+      <CareerResult round={round} />
 
       <dl className="grid grid-cols-2 gap-3 @lg:grid-cols-4">
         {stats.map(([label, value]) => (
@@ -152,11 +158,73 @@ export function TaskPerformanceReport({ round, onPlayAgain, onReview, onLobby }:
           Assistance used: <span className="font-medium text-fg">{round.assistanceUsed ? "Yes" : "No"}</span>
           {round.hint && <span className="text-fg-subtle"> · requested at {formatDuration(round.hint.requestedAtMs)} · no score effect</span>}
         </p>
-        <p className="mt-1 text-xs text-fg-subtle">
-          Estimated Corporate XP: <span className="font-medium text-gold">+{previewCorporateXp(score.total)}</span>{" "}
-          <span className="text-fg-subtle">· Preview only — not saved. Your career progress is unchanged.</span>
-        </p>
       </section>
     </ScreenWithActions>
+  );
+}
+
+/** Shows what the career system actually recorded. Never claims XP that wasn't saved. */
+function CareerResult({ round }: { round: FinishedRound }) {
+  const outcome = useCareerSession(round.sessionId);
+
+  if (!outcome || outcome.status === "saving") {
+    return (
+      <p role="status" className="rounded-xl border border-line bg-surface-raised/40 px-4 py-3 text-xs text-fg-muted">
+        Recording result in your career…
+      </p>
+    );
+  }
+
+  if (outcome.status === "failed") {
+    return (
+      <div role="status" className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-danger/40 bg-danger/8 px-4 py-3 text-xs">
+        <p className="text-rose-200">
+          {outcome.reason} No Corporate XP was added and your career is unchanged.
+        </p>
+        <button
+          type="button"
+          onClick={() => void getCareerStore().recordResult(round.sessionId, toGameResult(round, new Date()))}
+          className="rounded-md bg-white/8 px-2.5 py-1 font-medium text-fg ring-1 ring-line transition-colors ring-inset hover:bg-white/12"
+        >
+          Try again
+        </button>
+      </div>
+    );
+  }
+
+  const { record, award, change } = outcome;
+  const reason = award?.reason;
+  return (
+    <section role="status" aria-label="Career update" className="rounded-xl border border-gold/30 bg-gold-soft px-4 py-3 text-xs">
+      <p className="text-fg">
+        {record.xpAwarded > 0 ? (
+          <>
+            <span className="font-semibold text-gold">+{formatNumber(record.xpAwarded)} Corporate XP</span> added to your{" "}
+            {round.mode === "verified" ? "account" : "career"}.
+          </>
+        ) : reason === "repeatCase" ? (
+          "No Corporate XP: this case was already completed before. Replays don't pay twice."
+        ) : (
+          "No Corporate XP this round: the score was too low to count."
+        )}
+      </p>
+      {change.promoted ? (
+        <p className="mt-1 font-semibold text-gold">
+          Promoted: {change.rankBefore.title} → {change.rankAfter.title}
+        </p>
+      ) : (
+        change.leveledUp && (
+          <p className="mt-1 text-fg-muted">
+            Level up: {change.levelBefore} → {change.levelAfter}
+          </p>
+        )
+      )}
+      <p className="mt-1 text-fg-subtle">
+        {round.mode === "verified"
+          ? "Verified by the server and saved to your account."
+          : "Saved in this browser only (guest practice)."}{" "}
+        Open Corporate Career to see your progress.
+      </p>
+    </section>
   );
 }
