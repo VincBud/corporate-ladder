@@ -2,9 +2,11 @@ import "server-only";
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
 import { createRpcRoundStore, type RpcCall } from "./rounds/round-store";
 import { createVerifiedRoundService, type VerifiedRoundService } from "./rounds/service";
+import { createCompanyService, type CompanyService } from "./company/service";
 
 let rpc: RpcCall | null = null;
 let roundService: VerifiedRoundService | null = null;
+let companyService: CompanyService | null = null;
 
 /** Service-role RPC into the trusted SQL functions. Null when the server isn't configured. */
 export function getTrustedRpc(): RpcCall | null {
@@ -27,4 +29,13 @@ export function getRoundService(): VerifiedRoundService | null {
     roundService = createVerifiedRoundService({ store: createRpcRoundStore(call) });
   }
   return roundService;
+}
+
+export function getCompanyService(): CompanyService | null {
+  if (!companyService) {
+    const call = getTrustedRpc();
+    if (!call) return null;
+    companyService = createCompanyService({ rpc: call });
+  }
+  return companyService;
 }

@@ -92,7 +92,7 @@ describe("client privileges", () => {
 
   it("gives anonymous visitors only public reference data", async () => {
     const departments = await t.asAnon((db) => db.query("select id from public.departments"));
-    expect(departments.rows.length).toBe(8);
+    expect(departments.rows.length).toBe(9);
     await expect(t.asAnon((db) => db.query("select * from public.profiles"))).rejects.toThrow(denied);
     await expect(t.asAnon((db) => db.query("select * from public.game_results"))).rejects.toThrow(denied);
   });
@@ -112,6 +112,6 @@ describe("ledger constraints", () => {
     expect(xp.rows[0].xp).toBe(10);
     const bobXp = await t.asUser(bob, (db) => db.query<{ xp: number }>("select public.get_my_career_xp() as xp"));
     expect(bobXp.rows[0].xp).toBe(0);
-    await t.admin.query("delete from public.xp_ledger where source_id = $1", [source]);
+    await t.arrange("delete from public.xp_ledger where source_id = $1", [source]);
   });
 });

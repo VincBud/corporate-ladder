@@ -46,6 +46,15 @@ export function TrophyIcon(props: IconProps) {
   );
 }
 
+export function BuildingIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M4.5 20.5h15M6.5 20.5V5.5a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v15M14.5 9.5h3a1 1 0 0 1 1 1v10" />
+      <path d="M9 8h3M9 11.5h3M9 15h3M10.5 20.5v-2.5" />
+    </Icon>
+  );
+}
+
 export function IdBadgeIcon(props: IconProps) {
   return (
     <Icon {...props}>

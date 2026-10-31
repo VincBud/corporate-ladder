@@ -23,7 +23,8 @@ const SUPABASE_STUB = `
   create table auth.users (
     id uuid primary key default gen_random_uuid(),
     email text unique,
-    raw_user_meta_data jsonb not null default '{}'::jsonb
+    raw_user_meta_data jsonb not null default '{}'::jsonb,
+    raw_app_meta_data jsonb not null default '{}'::jsonb
   );
   create function auth.uid() returns uuid language sql stable as $$
     select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid
@@ -39,7 +40,7 @@ const SUPABASE_STUB = `
 export interface TestDatabase {
   db: PGlite;
   /** Creates an auth user (and, via trigger, a profile). Returns the user id. */
-  createUser(email: string, displayName?: string): Promise<string>;
+  createUser(email: string, displayName?: string, options?: { testAccount?: boolean }): Promise<string>;
   /** Runs queries as a signed-in player (role authenticated, auth.uid() = userId). */
   asUser<T>(userId: string, run: (db: PGlite) => Promise<T>): Promise<T>;
   /** Runs queries as an anonymous visitor. */
@@ -48,6 +49,11 @@ export interface TestDatabase {
   serviceRpc: RpcCall;
   /** Superuser access for arranging test state (e.g. moving time). */
   admin: PGlite;
+  /**
+   * Arranges states the integrity triggers forbid (e.g. a replayed seed),
+   * with triggers disabled for the duration. Test setup only.
+   */
+  arrange(sql: string, params?: unknown[]): Promise<void>;
 }
 
 export async function createTestDatabase(): Promise<TestDatabase> {
@@ -71,12 +77,20 @@ export async function createTestDatabase(): Promise<TestDatabase> {
   return {
     db,
     admin: db,
-    async createUser(email, displayName) {
+    async createUser(email, displayName, options) {
       const result = await db.query<{ id: string }>(
-        "insert into auth.users (email, raw_user_meta_data) values ($1, $2) returning id",
-        [email, JSON.stringify(displayName ? { display_name: displayName } : {})],
+        "insert into auth.users (email, raw_user_meta_data, raw_app_meta_data) values ($1, $2, $3) returning id",
+        [email, JSON.stringify(displayName ? { display_name: displayName } : {}), JSON.stringify(options?.testAccount ? { test_account: true } : {})],
       );
       return result.rows[0].id;
+    },
+    async arrange(sql, params = []) {
+      await db.exec("set session_replication_role = replica");
+      try {
+        await db.query(sql, params);
+      } finally {
+        await db.exec("set session_replication_role = default");
+      }
     },
     asUser: (userId, run) => withRole("authenticated", userId, run),
     asAnon: (run) => withRole("anon", "", run),

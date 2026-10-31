@@ -11,7 +11,7 @@ The app works with or without a backend:
 
 ## Setup
 
-**Staging status:** a staging project `corporate-ladder-staging` (ref `lalcervasxqjmrywgdzf`, eu-central-1) exists. The migration is applied and its keys are in the git-ignored `.env.local`. The Auth redirect URLs (step 4) still need to be set in the dashboard before email links work. The steps below also apply to future environments.
+**Staging status:** a staging project `corporate-ladder-staging` (ref `lalcervasxqjmrywgdzf`, eu-central-1) exists. Both migrations are applied and its keys are in the git-ignored `.env.local`. The Auth redirect URLs (step 4) still need to be set in the dashboard before email links work. The steps below also apply to future environments.
 
 1. **Create a Supabase project** at supabase.com.
 2. **Apply the migration.** Use either option:
@@ -63,12 +63,15 @@ proxy.ts ── refreshes session cookies on each request
 | Table | Purpose | Browser access |
 |---|---|---|
 | `profiles` | One per auth user (created by trigger): employee number, display name, optional department | Read own; update `display_name`, `department_id` only |
-| `departments` | Reference list | Read |
+| `departments` | Canonical departments (`kind`: operating / support) | Read |
 | `game_rules` | Pinned rules per game version: duration, tolerance, XP divisor, rate limit | Read |
 | `game_sessions` | Server-created rounds: secret seed, start, deadline, hint, status | **None** (the seed regenerates the answer key) |
 | `game_results` | One verified result per session, plus the scored cells | Read own |
 | `xp_ledger` | Authoritative XP: one row per result, `unique(source_type, source_id)` | Read own |
 | `legacy_practice_results` | Imported guest history (unverified, no XP) | Read own |
+| `contribution_formulas` | Versioned contribution formulas per game | Read |
+| `contribution_allocations` | Metric/department split per formula, in basis points | Read |
+| `contribution_events` | Append-only company contribution events, one per verified round | **None** (server reads only) |
 
 - **Writes:** all writes go through `SECURITY DEFINER` functions that only `service_role` can execute.
 - **Grants:** the migration revokes Supabase's default grants and grants only the privileges above.
@@ -112,6 +115,78 @@ proxy.ts ── refreshes session cookies on each request
 
 **What this does not stop:** server verification prevents forged scores, times and XP. It does not prevent outside help, automated solving, or multiple accounts. The game's code is public, so a bot could solve the public puzzle. Address those with behavioral checks before any prizes or rankings matter.
 
+## Company contribution events
+
+Every verified round also creates one **contribution event** for the shared company (migration `20261031120000_company_contributions.sql`). The live company snapshot is computed from these events (see [Live company](#live-company)).
+
+- **Created in the same transaction:** `finalize_game_session` inserts the result, the XP ledger row and the event together. If any part fails, none of it is written, and the session stays active so the client's retry can succeed.
+- **Contents:** the verified scoring inputs (score, max score, errors fixed / total, incorrect corrections, completion, assistance), the pinned `rules_version` and `formula_version`, and `completed_at` (database time at finalization). Everything is copied from the stored result, not from the request.
+- **Quarter:** `period_id` is a generated column, `utc_quarter(completed_at)`. Quarters are UTC calendar quarters (fiscal year = calendar year): Q1 Jan–Mar, Q2 Apr–Jun, Q3 Jul–Sep, Q4 Oct–Dec. Neither the client nor the server code can choose it.
+- **No points stored:** contribution points are recomputed from the inputs by the TypeScript formula for the event's `formula_version` (`src/simulation/contribution.ts`). A new formula never rewrites history, and the engine rejects events whose formula version it doesn't implement.
+- **Department allocation:** `contribution_allocations` pins each formula's split in integer basis points that sum to 10,000. Reconciliation Rush v1 is Ledger integrity → Controlling 7000 and Close quality → Finance 3000. Allocation rows are immutable, and a formula that already has events can't gain new rows. A new split means a new formula version.
+- **Exactly once:** `unique(session_id)` gives one event per round, and duplicate or concurrent submissions return `duplicate`. `unique(user_id, game_id, seed)` means a player contributes once per seed in any quarter (a replay earns no event, just as it earns no XP).
+- **Append-only:** triggers reject UPDATE, DELETE and TRUNCATE for every role, including the database owner. The one exception: events disappear by cascade when the player's account is deleted.
+- **Recovery:** a retried submission of an already-finalized round records a missing event (`source = 'recovery'`). Since Live Company v0.1 the round service routes HTTP retries through `finalize_game_session` too, so this works over the normal API path (previously only direct calls reached it). `backfill_contribution_events(limit)` (service role) records missing events for older results, oldest first, so the earliest completion of a seed wins (`source = 'backfill'`). Both are idempotent. The migration ran the backfill once (staging had no results). Legacy guest imports are never read.
+- **Access:**
+  - Clients can't read or write events, and can't call the functions that create them.
+  - The service role can read events and run the backfill. It can't insert, update or delete events directly, or call `record_contribution_event`.
+  - Public statistics come only from `GET /api/company` (aggregates), never from per-player rows.
+- **Cascade deletion (fixed in `20261031140000_harden_authoritative_data.sql`):** events still cascade from their result, but results, XP rows and sessions can no longer be deleted on their own (see [Authoritative data protection](#authoritative-data-protection)). A player's history is removed only all together, with the account.
+
+## Authoritative data protection
+
+Migration `20261031140000_harden_authoritative_data.sql`. What we found on staging, by inspecting `pg_roles`, table and column privileges, function owners and `pg_default_acl`:
+
+- **Default privileges:** Supabase grants **all** privileges (`arwdDxtm`) on every new `public` table to `anon`, `authenticated` and `service_role`. Earlier migrations revoked them from `anon` and `authenticated` only. `service_role`, which also bypasses RLS, could insert, update, delete, truncate and add triggers or references on results, XP, sessions, profiles, imports and reference data. It could also execute the trigger functions `handle_new_user` and `touch_updated_at`.
+- **Inconsistent deletes:** deleting a result cascaded to its contribution event but left its XP row, because `xp_ledger.source_id` has no foreign key.
+- **What already held:**
+  - `service_role` is not a member of `postgres` and can't create objects in `public`.
+  - All SECURITY DEFINER functions are owned by `postgres` with `search_path = ''`.
+  - `authenticator` can only switch to `anon`, `authenticated` and `service_role`.
+
+Fix:
+
+| Layer | Change |
+|---|---|
+| **Grants** | `service_role` is read-only on `game_results`, `xp_ledger`, `game_sessions`, `legacy_practice_results`, `profiles`, `game_rules`, `departments` and both sequences. Two narrow column grants remain: `game_sessions(started_at, deadline_at)` (live deadline tests; only for active rounds) and `profiles(display_name, department_id)` (the fields players can edit). Trigger functions can't be called directly. |
+| **Owner-level triggers** (apply to every role, including `postgres`) | `game_results` and `xp_ledger` are append-only. `game_sessions` can't be deleted directly, are frozen once finalized or abandoned, and never change identity (user, game, rules, seed). Deletes that arrive as cascades from a profile or auth user are allowed, so **account deletion removes a player's sessions, results, XP, events and imports together**. |
+| **Audit** | `check_progression_integrity()` (service role, read-only) counts finalized sessions without results, results without XP, XP without results, XP that disagrees with its result, results missing a contribution (seed replays excluded), and events that disagree with their result. All counts should be 0. |
+
+Unchanged: finalization (SECURITY DEFINER functions run as the owner), recovery, backfill, imports, player RLS and table structure.
+
+Remaining trust boundary: the `postgres` role (migrations, dashboard SQL editor) can still disable triggers. Protect database credentials and dashboard access accordingly.
+
+Every new table gets Supabase's broad default grants. `server/security.test.ts` checks every table, column, sequence and function privilege against an allowlist, so a migration that forgets to revoke fails the tests.
+
+## Live company
+
+`GET /api/company` publishes the shared company for the current UTC quarter (migration `20261031130000_live_company.sql`, server `src/server/company/`, model `src/simulation/live.ts`).
+
+- **Reading:** the server calls `get_company_quarter()`, a service-role-only, read-only SQL function. It returns registered employees, membership counts, the quarter's events (with player ids, which never leave the server) and the published allocations, in one consistent read. The database decides the current quarter.
+- **Test accounts:** auth users with `app_metadata.test_account = true` aren't employees, and their events are ignored. `app_metadata` can only be set with the service role. The live tests flag every account they create, except one that verifies the real path and is deleted afterwards.
+- **Computing:** events go through the existing engine: the pinned formula version per event, normalization, per-player quarterly caps, duplicate and seed-replay rejection, then `computeQuarter`. The server checks that the database allocations match the TypeScript formula and refuses to compute (503) if they differ.
+- **Publishing:** aggregates only, with no player ids, rounds, seeds, events or points per player. Membership breakdowns withhold groups of 1–4 people, plus a second cell when only one would be withheld (`MIN_GROUP_SIZE = 5`). The response is validated by `parseCompanySnapshot` in the browser.
+- **Caching:** `Cache-Control: no-store`. The server caches the snapshot for 15 s per instance and loads it single-flight. A verified submission on the same instance clears the cache, so the player sees their round right away. Other changes, such as new sign-ups and account deletions, appear within 15 s.
+- **Errors:** `400` for any query parameter, `503 not_configured` without a backend, and `503 company_unavailable` (with `Retry-After`, no internal details) when the database fails or returns unexpected data. The app never falls back to demo data.
+
+## Canonical departments
+
+`src/config/departments.ts` is the single list and must match the table (a test checks this):
+
+| id | Name | Kind |
+|---|---|---|
+| `finance` | Finance | operating |
+| `controlling` | Controlling | operating (added) |
+| `people` | Human Resources (was "People & Culture") | operating |
+| `sales` | Sales | operating |
+| `operations` | Operations & Supply Chain (was "Operations") | operating |
+| `it` | IT & Engineering (was "IT") | operating |
+| `marketing` | Marketing | operating |
+| `legal` | Legal | support |
+| `strategy` | Strategy | support |
+
+Existing ids were kept, so no profile assignment changed. Only display names were updated, and one department was added. The company simulation uses the same ids. A player's department (membership) never decides which metrics a game feeds; the game's formula does.
+
 ## Guest-to-account migration
 
 Signed-in players with guest rounds in this browser see an **Import as legacy practice** offer in Corporate Career.
@@ -124,11 +199,14 @@ Signed-in players with guest rounds in this browser see an **Import as legacy pr
 
 | What | How | Proves |
 |---|---|---|
+| Contribution events: transactionality, duplicates, concurrency, seed replays, quarters, authorization, append-only guards, recovery, backfill, formula versions | Vitest + PGlite (`server/contributions.test.ts`) | The ledger's guarantees at the Postgres level |
+| Privilege allowlist (every table, column, sequence, function and role), service-role write attempts, owner-level guards, account deletion, integrity audit | Vitest + PGlite (`server/security.test.ts`) | Authoritative data can only change through the trusted functions |
+| Live company: aggregation from real verified rounds, test-account and guest-import exclusion, current quarter, caching and invalidation, failures, authorization, privacy | Vitest + PGlite (`server/company/service.test.ts`), handler tests (`http.test.ts`), pure model tests (`simulation/live.test.ts`) | The snapshot is correct, aggregate-only and fails safely |
 | Migration, RLS, grants, constraints, SQL functions | Vitest + **PGlite** (real Postgres in WASM) running the actual migration with Supabase-like roles and default grants | Postgres-level security and exactly-once logic |
 | Round lifecycle (start, hint, submit, deadlines, tampering, cross-user, duplicates, replay, rules versions) | Service + RPC adapter + real SQL functions in PGlite | Server authority over scores, time and XP |
 | Auth state, career scopes, cloud repository, guest import | Unit tests with fakes | Client state handling |
 
-| Live staging: Supabase Auth, PostgREST, RLS, the full HTTP lifecycle, truly concurrent submissions, deadlines, rate limits, import, profile | `npm run test:live` (opt-in; needs `.env.local`, plus `LIVE_BASE_URL` pointing at a running build). Creates and deletes test users | The deployed security model on a real Supabase project |
+| Live staging: Supabase Auth, PostgREST, RLS, the full HTTP lifecycle, truly concurrent submissions, deadlines, rate limits, import, profile, contribution events (creation, quarters, concurrency, access, cascade on account deletion), live company (`GET /api/company`, test-account exclusion, update right after a verified round, removal after account deletion), hardening (service-role writes denied, account deletion, integrity audit) | `npm run test:live` (opt-in; needs `.env.local`, plus `LIVE_BASE_URL` pointing at a running build). Creates and deletes test users | The deployed security model on a real Supabase project |
 
 **Still not automated:** the real sign-up confirmation and password-reset emails, because a test inbox is needed.
 
@@ -140,3 +218,4 @@ Signed-in players with guest rounds in this browser see an **Import as legacy pr
 - **Rate limits:** the in-memory limits are per server instance. The database limit on round creation is the authoritative one.
 - **Account switching mid-round:** switching accounts during a verified round leaves that round to be abandoned when the next one starts.
 - **History size:** history views read up to 500 recent results. Totals (XP) come from the full ledger.
+- **Live company scale:** each snapshot reads the whole quarter's events into the server (fine for thousands of rounds). Larger volumes need aggregation in SQL or a materialized per-player summary.

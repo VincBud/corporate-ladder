@@ -13,6 +13,7 @@ import { createSessionId } from "@/lib/session-id";
 import { GUEST_SCOPE } from "@/performance/career-scope";
 import { getCareerStore, useActiveCareerScope } from "@/performance/use-career";
 import { api } from "@/services/api-client";
+import { notifyCompanyChanged } from "@/services/company-source";
 import type { AppProps } from "../types";
 import { SpreadsheetWarsLobby } from "./lobby";
 import { Briefing } from "./rush/briefing";
@@ -29,11 +30,13 @@ const SUBMITTING_WARNING = "Your round is being verified. Closing now may hide t
 
 const messageOf = (error: unknown) => (error instanceof Error ? error.message : "Something went wrong.");
 
-export function SpreadsheetWarsApp({ setCloseWarning }: AppProps) {
+export function SpreadsheetWarsApp({ setCloseWarning, openApp }: AppProps) {
   const [state, dispatch] = useReducer(spreadsheetWarsReducer, initialSpreadsheetWarsState);
   // Distinguishes user navigation from the first render, so focus only moves
   // when the player switches screens (not when the window first opens).
   const [navigated, setNavigated] = useState(false);
+  // Session id of the last verified round the server recorded as a company contribution.
+  const [contributionFor, setContributionFor] = useState<string | null>(null);
   const auth = useAuth();
   const scope = useActiveCareerScope();
   const playing = state.phase === "playing";
@@ -79,6 +82,10 @@ export function SpreadsheetWarsApp({ setCloseWarning }: AppProps) {
       (response) => {
         if (cancelled) return;
         if (scope && scope !== GUEST_SCOPE) getCareerStore(scope).applyVerifiedResult(round.sessionId, response);
+        if (response.contribution?.recorded) {
+          setContributionFor(round.sessionId);
+          notifyCompanyChanged();
+        }
         dispatch({ type: "verifiedResultReceived", round: toFinishedRound(round.sessionId, response) });
       },
       (error) => {
@@ -166,6 +173,8 @@ export function SpreadsheetWarsApp({ setCloseWarning }: AppProps) {
           onPlayAgain={newRound}
           onReview={() => act({ type: "openReview" })}
           onLobby={() => act({ type: "openLobby" })}
+          companyContribution={state.round.mode === "verified" && contributionFor === state.round.sessionId}
+          onOpenCompany={() => openApp("company")}
         />
       );
     case "review":

@@ -40,6 +40,7 @@ src/
         machine.ts     Lobby → briefing → playing → results state machine
         result.ts      Finished round → career history record (no answer keys)
   career/              Ranks, XP curve, XP awards, promotions (pure functions)
+  simulation/          Corporate Simulation: contributions, economy, earnings reports (pure functions)
   performance/         Player history: schema, ledger, stats selectors, store + hook
   auth/                Browser auth state (Supabase email + password)
   server/              Trusted server code: verified rounds, career API helpers
@@ -89,6 +90,10 @@ Total XP is derived from the history (the employee's starting XP plus the XP of 
 
 Progress is saved in this browser only. This is solo progression, not a security boundary: anyone can edit their own localStorage.
 
+## Corporate Simulation
+
+The **Company** app is the company dashboard: revenue, costs, profit, efficiency, department performance, milestones, quarterly history and earnings reports. Verified rounds feed one shared company through normalized, capped contribution points that are separate from XP. The **Live company** tab shows that company from `GET /api/company`; the **Simulation preview** tab shows clearly labeled demo scenarios. Formulas, anti-farming rules and the server contract are in [docs/simulation.md](docs/simulation.md); the balancing audit is in [docs/economy-balance.md](docs/economy-balance.md).
+
 ## Status
 
-LadderOS desktop shell with four applications. Reconciliation Rush is playable, and completed rounds award Corporate XP saved in the browser. No backend or authentication yet. Leaderboard data is fictional and labeled as such.
+LadderOS desktop shell with five applications. Reconciliation Rush is playable: guests are scored in the browser, and signed-in players get server-verified rounds and XP (see [docs/backend.md](docs/backend.md)). Verified rounds are recorded as append-only company contribution events, and the Company app's Live view shows the shared company computed from them (fictional CorpBucks, aggregate-only). The Simulation preview tab keeps the demo scenarios. Leaderboard data is fictional and labeled as such.

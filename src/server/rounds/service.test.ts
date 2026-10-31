@@ -296,7 +296,7 @@ describe("XP rules", () => {
     const first = await start();
     await service.submitRound(alice, first.response.sessionId, { entries: solutionEntries(first.challenge) });
     // Seeds are unique per session; simulate a replay by freeing the old seed value.
-    await t.admin.query("update public.game_sessions set seed = seed || '-original' where id = $1", [first.response.sessionId]);
+    await t.arrange("update public.game_sessions set seed = seed || '-original' where id = $1", [first.response.sessionId]);
     const replayService = createVerifiedRoundService({ store, createSeed: () => first.challenge.seed });
     const replay = await replayService.startRound(alice);
     const result = await replayService.submitRound(alice, replay.sessionId, { entries: solutionEntries(first.challenge) });
@@ -316,7 +316,7 @@ describe("XP rules", () => {
   it("refuses sessions pinned to rules the server can't verify", async () => {
     const { response } = await start();
     await t.admin.query("insert into public.game_rules (game_id, rules_version, duration_ms, tolerance_ms) values ('reconciliation-rush', 99, 90000, 3000) on conflict do nothing");
-    await t.admin.query("update public.game_sessions set rules_version = 99 where id = $1", [response.sessionId]);
+    await t.arrange("update public.game_sessions set rules_version = 99 where id = $1", [response.sessionId]);
     await expectError(service.submitRound(alice, response.sessionId, { entries: {} }), "unsupported_rules");
     await t.admin.query("update public.game_rules set is_active = false where rules_version = 99");
   });

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { apiError, rateLimit, readJsonBody, requireUser, toErrorResponse } from "@/server/http";
 import { assertSessionId } from "@/server/rounds/payload";
-import { getRoundService } from "@/server/services";
+import { getCompanyService, getRoundService } from "@/server/services";
 
 /** Submits the final sheet. The server scores it; repeats return the stored result. */
 export async function POST(request: Request, { params }: { params: Promise<{ sessionId: string }> }) {
@@ -14,7 +14,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ ses
   try {
     const sessionId = assertSessionId((await params).sessionId);
     const body = await readJsonBody(request);
-    return NextResponse.json(await service.submitRound(auth.user.id, sessionId, body), { headers: { "Cache-Control": "no-store" } });
+    const result = await service.submitRound(auth.user.id, sessionId, body);
+    // The company snapshot on this instance now includes the new contribution.
+    if (result.created || result.contribution.recorded) getCompanyService()?.invalidate();
+    return NextResponse.json(result, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
     return toErrorResponse(error);
   }

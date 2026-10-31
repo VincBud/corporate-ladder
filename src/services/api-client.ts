@@ -43,6 +43,8 @@ export const api = {
   requestHint: (sessionId: string, entries: PlayerEntries) => post<HintResponse>(`/api/rounds/${sessionId}/hint`, { entries }),
   submitRound: (sessionId: string, entries: PlayerEntries) => post<SubmitRoundResponse>(`/api/rounds/${sessionId}/submit`, { entries }),
   career: () => request<CareerResponse>("/api/career"),
+  /** Public company snapshot; validate with parseCompanySnapshot (see company-source.ts). */
+  company: () => request<unknown>("/api/company"),
   importLegacy: (records: readonly GameResultRecord[]) => post<ImportResponse>("/api/career/import", { records }),
   updateProfile: (patch: { displayName?: string; departmentId?: string | null }) =>
     request<CloudProfile>("/api/profile", { method: "PATCH", body: JSON.stringify(patch) }),

@@ -1,6 +1,7 @@
-import { GridIcon, IdBadgeIcon, LadderIcon, TrophyIcon } from "@/components/icons";
+import { BuildingIcon, GridIcon, IdBadgeIcon, LadderIcon, TrophyIcon } from "@/components/icons";
 import { APP_IDS, type AppId } from "@/types/app";
 import { CareerApp } from "./career/career-app";
+import { CompanyApp } from "./company/company-app";
 import { LeaderboardApp } from "./leaderboard/leaderboard-app";
 import { ProfileApp } from "./profile/profile-app";
 import { SpreadsheetWarsApp } from "./spreadsheet-wars/spreadsheet-wars-app";
@@ -43,6 +44,15 @@ const APP_REGISTRY: Record<AppId, AppDefinition> = {
     tint: "from-slate-400 to-slate-700",
     window: { initial: { width: 740, height: 620 }, min: { width: 420, height: 360 } },
     component: ProfileApp,
+  },
+  company: {
+    id: "company",
+    title: "Company",
+    description: "Company dashboard and quarterly earnings. Simulation preview.",
+    icon: BuildingIcon,
+    tint: "from-sky-500 to-blue-800",
+    window: { initial: { width: 980, height: 700 }, min: { width: 440, height: 380 } },
+    component: CompanyApp,
   },
 };
 

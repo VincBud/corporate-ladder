@@ -27,10 +27,13 @@ interface TaskPerformanceReportProps {
   onPlayAgain: () => void;
   onReview: () => void;
   onLobby: () => void;
+  /** True when the server recorded this verified round in the company's contribution ledger. */
+  companyContribution?: boolean;
+  onOpenCompany?: () => void;
 }
 
 /** Post-round results. Not a Quarterly Performance Review; nothing here is saved. */
-export function TaskPerformanceReport({ round, onPlayAgain, onReview, onLobby }: TaskPerformanceReportProps) {
+export function TaskPerformanceReport({ round, onPlayAgain, onReview, onLobby, companyContribution, onOpenCompany }: TaskPerformanceReportProps) {
   const headingRef = useRef<HTMLHeadingElement>(null);
   const id = useId();
   const { evaluation, score, grade, challenge } = round;
@@ -112,6 +115,27 @@ export function TaskPerformanceReport({ round, onPlayAgain, onReview, onLobby }:
       </section>
 
       <CareerResult round={round} />
+
+      {companyContribution && (
+        <section
+          aria-label="Company contribution"
+          className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-accent/30 bg-accent-soft px-4 py-3 text-xs"
+        >
+          <p className="text-fg">
+            Counted toward the company this quarter: Controlling (Ledger integrity) and Finance (Close quality).
+            <span className="block text-fg-subtle">Company contribution is separate from your XP and capped per quarter.</span>
+          </p>
+          {onOpenCompany && (
+            <button
+              type="button"
+              onClick={onOpenCompany}
+              className="rounded-md bg-white/8 px-2.5 py-1 font-medium text-fg ring-1 ring-line transition-colors ring-inset hover:bg-white/12"
+            >
+              View company
+            </button>
+          )}
+        </section>
+      )}
 
       <dl className="grid grid-cols-2 gap-3 @lg:grid-cols-4">
         {stats.map(([label, value]) => (

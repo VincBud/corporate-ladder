@@ -12,6 +12,8 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { xpForScore } from "@/career/xp";
 import { cellKey } from "@/games/spreadsheet-wars/sheet";
 import { challengeFor } from "@/server/rounds/rules";
+import { periodOf } from "@/simulation/periods";
+import { parseCompanySnapshot, type CompanySnapshot } from "@/simulation/source";
 import type { CareerResponse } from "@/types/cloud-career";
 import type { HintResponse, StartRoundResponse, SubmitRoundResponse } from "@/types/verified-play";
 
@@ -34,13 +36,15 @@ interface TestUser {
   db: SupabaseClient;
 }
 
-async function createUser(label: string): Promise<TestUser> {
+/** Test accounts (app_metadata.test_account) never count as company employees. */
+async function createUser(label: string, { testAccount = true }: { testAccount?: boolean } = {}): Promise<TestUser> {
   const email = `cl-live-${label}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}@example.com`;
   const { data, error } = await admin!.auth.admin.createUser({
     email,
     password: PASSWORD,
     email_confirm: true,
     user_metadata: { display_name: `Live ${label}` },
+    app_metadata: testAccount ? { test_account: true } : {},
   });
   if (error) throw error;
   createdUsers.push(data.user.id);
@@ -146,7 +150,7 @@ describe.skipIf(!configured)("live: database security through Supabase", () => {
 
   it("gives anonymous visitors only reference data", async () => {
     const anon = createClient(URL_, PUBLISHABLE, { auth: { persistSession: false } });
-    expect((await anon.from("departments").select("id")).data).toHaveLength(8);
+    expect((await anon.from("departments").select("id")).data).toHaveLength(9);
     const profiles = await anon.from("profiles").select("*");
     expect(profiles.error !== null || (profiles.data ?? []).length === 0).toBe(true);
   });
@@ -280,5 +284,254 @@ describe.skipIf(!configured || !BASE)("live: verified rounds over HTTP", () => {
     expect((await api(alice, "PATCH", "/api/profile", { departmentId: "nowhere" })).status).toBe(400);
     const career = (await api<CareerResponse>(alice, "GET", "/api/career")).data;
     expect(career.profile).toMatchObject({ displayName: "Alice Verified", departmentId: "finance" });
+  });
+});
+
+async function contributionEvents(userId: string) {
+  const { data, error } = await admin!.from("contribution_events").select("*").eq("user_id", userId).order("completed_at");
+  if (error) throw error;
+  return data as { session_id: string; period_id: string; completed_at: string; completion: string; source: string; score: number; formula_version: number }[];
+}
+
+describe.skipIf(!configured)("live: contribution ledger security", () => {
+  let carol: TestUser;
+  beforeAll(async () => {
+    carol = await createUser("carol");
+  });
+
+  it("publishes the canonical departments and the Reconciliation Rush allocation", async () => {
+    const anon = createClient(URL_, PUBLISHABLE, { auth: { persistSession: false } });
+    const departments = await anon.from("departments").select("id, kind").order("id");
+    expect(departments.data).toContainEqual({ id: "controlling", kind: "operating" });
+    expect(departments.data).toContainEqual({ id: "legal", kind: "support" });
+    const allocation = await anon
+      .from("contribution_allocations")
+      .select("metric_id, department_id, weight_bp")
+      .eq("game_id", "reconciliation-rush")
+      .eq("formula_version", 1)
+      .order("metric_id");
+    expect(allocation.data).toEqual([
+      { metric_id: "close-quality", department_id: "finance", weight_bp: 3000 },
+      { metric_id: "ledger-integrity", department_id: "controlling", weight_bp: 7000 },
+    ]);
+  });
+
+  it("hides events from players and blocks every client write", async () => {
+    expect((await carol.db.from("contribution_events").select("*")).error?.message).toMatch(/permission denied/);
+    const forged = await carol.db.from("contribution_events").insert({ session_id: crypto.randomUUID(), user_id: carol.id });
+    expect(forged.error?.message).toMatch(/permission denied/);
+    expect((await carol.db.rpc("backfill_contribution_events", { p_limit: 10 })).error).not.toBeNull();
+    expect((await carol.db.rpc("record_contribution_event", { p_session_id: crypto.randomUUID(), p_source: "finalize" })).error).not.toBeNull();
+    const formula = await carol.db.from("contribution_formulas").update({ is_active: false }).eq("game_id", "reconciliation-rush");
+    expect(formula.error?.message).toMatch(/permission denied/);
+  });
+
+  it("doesn't let even the service role write events directly", async () => {
+    const insert = await admin!.from("contribution_events").insert({ session_id: crypto.randomUUID(), user_id: carol.id });
+    expect(insert.error?.message).toMatch(/permission denied/);
+    const del = await admin!.from("contribution_events").delete().eq("user_id", carol.id);
+    expect(del.error?.message).toMatch(/permission denied/);
+    expect((await admin!.rpc("record_contribution_event", { p_session_id: crypto.randomUUID(), p_source: "finalize" })).error).not.toBeNull();
+  });
+
+  it("runs the backfill idempotently", async () => {
+    const first = await admin!.rpc("backfill_contribution_events", { p_limit: 500 });
+    expect(first.error).toBeNull();
+    const second = await admin!.rpc("backfill_contribution_events", { p_limit: 500 });
+    expect(second.data.created).toBe(0);
+  });
+});
+
+describe.skipIf(!configured || !BASE)("live: verified company contributions over HTTP", () => {
+  let dana: TestUser;
+  let erin: TestUser;
+  beforeAll(async () => {
+    dana = await createUser("dana");
+    erin = await createUser("erin");
+  });
+
+  it("records one event per verified round, with a database-assigned quarter", async () => {
+    const start = await api<StartRoundResponse>(dana, "POST", "/api/rounds");
+    const { entries } = await answersFor(start.data.sessionId, dana.id);
+    const submit = await api<SubmitRoundResponse>(dana, "POST", `/api/rounds/${start.data.sessionId}/submit`, {
+      entries: entries(),
+      completedAt: "2020-01-01T00:00:00.000Z", // ignored
+      periodId: "2020-Q1", // ignored
+    });
+    expect(submit.status).toBe(200);
+    // The player only learns that the round counted: no points or allocation.
+    expect(submit.data.contribution).toEqual({ recorded: true });
+    const [event] = await contributionEvents(dana.id);
+    expect(event).toMatchObject({ session_id: start.data.sessionId, completion: "submitted", source: "finalize", score: submit.data.record.score, formula_version: 1 });
+    expect(new Date(event.completed_at).toISOString()).toBe(submit.data.record.completedAt);
+    expect(event.period_id).toBe(periodOf(submit.data.record.completedAt));
+    expect(submit.data.record.xpAwarded).toBe(xpForScore(submit.data.record.score));
+
+    const again = await api<SubmitRoundResponse>(dana, "POST", `/api/rounds/${start.data.sessionId}/submit`, { entries: {} });
+    expect(again.data.created).toBe(false);
+    expect(await contributionEvents(dana.id)).toHaveLength(1);
+  });
+
+  it("records exactly one event for truly concurrent submissions", async () => {
+    const start = await api<StartRoundResponse>(dana, "POST", "/api/rounds");
+    const { entries } = await answersFor(start.data.sessionId, dana.id);
+    const results = await Promise.all(
+      Array.from({ length: 6 }, (_, i) => api<SubmitRoundResponse>(dana, "POST", `/api/rounds/${start.data.sessionId}/submit`, { entries: entries(i % 6) })),
+    );
+    expect(results.filter((r) => r.data.created)).toHaveLength(1);
+    expect((await contributionEvents(dana.id)).filter((e) => e.session_id === start.data.sessionId)).toHaveLength(1);
+    expect(await ledgerRows(dana.id)).toBe(2);
+  });
+
+  it("records timed-out rounds and nothing for someone else's round", async () => {
+    const start = await api<StartRoundResponse>(erin, "POST", "/api/rounds");
+    const { entries } = await answersFor(start.data.sessionId, erin.id);
+    expect((await api(dana, "POST", `/api/rounds/${start.data.sessionId}/submit`, { entries: entries() })).status).toBe(404);
+    await shiftClock(start.data.sessionId, 120_000);
+    const late = await api<SubmitRoundResponse>(erin, "POST", `/api/rounds/${start.data.sessionId}/submit`, { entries: entries() });
+    expect(late.data.record.completion).toBe("timedOut");
+    expect(await contributionEvents(erin.id)).toEqual([expect.objectContaining({ session_id: start.data.sessionId, completion: "timedOut", score: 0 })]);
+    expect((await contributionEvents(dana.id)).map((e) => e.session_id)).not.toContain(start.data.sessionId);
+  });
+
+  it("removes a player's events when the account is deleted", async () => {
+    const leaver = await createUser("leaver");
+    const start = await api<StartRoundResponse>(leaver, "POST", "/api/rounds");
+    const { entries } = await answersFor(start.data.sessionId, leaver.id);
+    await api(leaver, "POST", `/api/rounds/${start.data.sessionId}/submit`, { entries: entries() });
+    expect(await contributionEvents(leaver.id)).toHaveLength(1);
+    const { error } = await admin!.auth.admin.deleteUser(leaver.id);
+    expect(error).toBeNull();
+    expect(await contributionEvents(leaver.id)).toHaveLength(0);
+  });
+});
+
+async function companySnapshot(): Promise<CompanySnapshot> {
+  const { status, data } = await api<unknown>(null, "GET", "/api/company");
+  expect(status).toBe(200);
+  const snapshot = parseCompanySnapshot(data);
+  expect(snapshot).not.toBeNull();
+  return snapshot!;
+}
+
+/** The server caches snapshots briefly; wait until a condition holds. */
+async function eventually(check: (s: CompanySnapshot) => boolean, timeoutMs = 25_000): Promise<CompanySnapshot> {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const snapshot = await companySnapshot();
+    if (check(snapshot) || Date.now() > deadline) return snapshot;
+    await new Promise((resolve) => setTimeout(resolve, 2_000));
+  }
+}
+
+describe.skipIf(!configured)("live: company data access", () => {
+  it("keeps the company data function away from clients", async () => {
+    const user = await createUser("frank");
+    expect((await user.db.rpc("get_company_quarter", { p_period_id: null })).error).not.toBeNull();
+    const anon = createClient(URL_, PUBLISHABLE, { auth: { persistSession: false } });
+    expect((await anon.rpc("get_company_quarter", { p_period_id: null })).error).not.toBeNull();
+  });
+});
+
+describe.skipIf(!configured || !BASE)("live: company snapshot over HTTP", () => {
+  it("serves a valid, aggregate-only snapshot to anyone, uncached", async () => {
+    const response = await fetch(`${BASE}/api/company`);
+    expect(response.status).toBe(200);
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    const text = await response.text();
+    const snapshot = parseCompanySnapshot(JSON.parse(text))!;
+    expect(snapshot.fictional).toBe(true);
+    expect(snapshot.period.id).toBe(periodOf(new Date().toISOString()));
+    expect(text).not.toMatch(/user_id|session_id|"seed"|@example\.com/);
+    expect((await api(null, "GET", "/api/company?period=2025-Q1")).status).toBe(400);
+  });
+
+  it("ignores test accounts", async () => {
+    const before = await companySnapshot();
+    const tester = await createUser("company-tester");
+    const start = await api<StartRoundResponse>(tester, "POST", "/api/rounds");
+    const { entries } = await answersFor(start.data.sessionId, tester.id);
+    const submit = await api<SubmitRoundResponse>(tester, "POST", `/api/rounds/${start.data.sessionId}/submit`, { entries: entries() });
+    expect(submit.data.contribution).toEqual({ recorded: true }); // recorded in the ledger…
+    const after = await companySnapshot();
+    expect(after.employees.registered).toBe(before.employees.registered); // …but not a company employee
+    expect(after.employees.active).toBe(before.employees.active);
+    expect(after.financials.revenue).toBe(before.financials.revenue);
+  });
+
+  it("shows a real employee's verified round right after it's submitted, and forgets it when the account is deleted", async () => {
+    const before = await companySnapshot();
+    const employee = await createUser("company-employee", { testAccount: false });
+    const start = await api<StartRoundResponse>(employee, "POST", "/api/rounds");
+    const { entries } = await answersFor(start.data.sessionId, employee.id);
+    const submit = await api<SubmitRoundResponse>(employee, "POST", `/api/rounds/${start.data.sessionId}/submit`, { entries: entries() });
+    expect(submit.data.contribution).toEqual({ recorded: true });
+    expect(submit.data.record.xpAwarded).toBe(xpForScore(submit.data.record.score));
+
+    // The submit invalidated the server's cache, so the next read is fresh.
+    const after = await companySnapshot();
+    expect(after.employees.registered).toBe(before.employees.registered + 1);
+    expect(after.employees.active).toBe(before.employees.active + 1);
+    expect(after.dataStatus).toBe("active");
+    expect(after.impact.revenue).toBeGreaterThan(before.impact.revenue);
+    expect(after.departments.find((d) => d.id === "controlling")!.attainment).toBeGreaterThan(0);
+    expect(new Date(after.lastContributionAt!).getTime()).toBeGreaterThan(Date.now() - 60_000);
+    expect(JSON.stringify(after)).not.toContain(employee.id);
+
+    const { error } = await admin!.auth.admin.deleteUser(employee.id);
+    expect(error).toBeNull();
+    const gone = await eventually((s) => s.employees.registered === before.employees.registered);
+    expect(gone.employees.registered).toBe(before.employees.registered);
+    expect(gone.employees.active).toBe(before.employees.active);
+  }, 60_000);
+});
+
+describe.skipIf(!configured || !BASE)("live: authoritative data hardening", () => {
+  it("blocks direct service-role writes to verified results, XP, sessions and profiles", async () => {
+    const player = await createUser("hardening");
+    const start = await api<StartRoundResponse>(player, "POST", "/api/rounds");
+    const { entries } = await answersFor(start.data.sessionId, player.id);
+    await api(player, "POST", `/api/rounds/${start.data.sessionId}/submit`, { entries: entries() });
+
+    const attempts = [
+      admin!.from("game_results").update({ score: 1 }).eq("user_id", player.id),
+      admin!.from("game_results").delete().eq("user_id", player.id),
+      admin!.from("xp_ledger").insert({ user_id: player.id, source_type: "game_result", source_id: crypto.randomUUID(), amount: 999 }),
+      admin!.from("xp_ledger").update({ amount: 999 }).eq("user_id", player.id),
+      admin!.from("xp_ledger").delete().eq("user_id", player.id),
+      admin!.from("game_sessions").update({ status: "active" }).eq("id", start.data.sessionId),
+      admin!.from("game_sessions").delete().eq("id", start.data.sessionId),
+      admin!.from("profiles").update({ employee_number: "CL-000001" }).eq("user_id", player.id),
+      admin!.from("profiles").delete().eq("user_id", player.id),
+      admin!.from("game_rules").update({ xp_score_divisor: 1 }).eq("game_id", "reconciliation-rush"),
+    ];
+    for (const attempt of attempts) expect((await attempt).error?.message).toMatch(/permission denied/);
+
+    // A closed round's clock can't be moved either (owner-level guard).
+    const late = await admin!.from("game_sessions").update({ deadline_at: new Date(Date.now() + 86_400_000).toISOString() }).eq("id", start.data.sessionId);
+    expect(late.error?.message).toMatch(/game_session_closed/);
+
+    const { count } = await admin!.from("game_results").select("session_id", { count: "exact", head: true }).eq("user_id", player.id);
+    expect(count).toBe(1);
+    expect(await ledgerRows(player.id)).toBe(1);
+  });
+
+  it("still deletes a player's whole history with the account, consistently", async () => {
+    const leaver = await createUser("hardening-leaver");
+    const start = await api<StartRoundResponse>(leaver, "POST", "/api/rounds");
+    const { entries } = await answersFor(start.data.sessionId, leaver.id);
+    await api(leaver, "POST", `/api/rounds/${start.data.sessionId}/submit`, { entries: entries() });
+    expect((await admin!.auth.admin.deleteUser(leaver.id)).error).toBeNull();
+    for (const table of ["game_sessions", "game_results", "xp_ledger", "contribution_events", "profiles"]) {
+      const { count, error } = await admin!.from(table).select("*", { count: "exact", head: true }).eq("user_id", leaver.id);
+      expect(error).toBeNull();
+      expect(count, table).toBe(0);
+    }
+  });
+
+  it("reports no orphaned or contradictory records after all of the above", async () => {
+    const { data, error } = await admin!.rpc("check_progression_integrity");
+    expect(error).toBeNull();
+    expect(Object.values(data as Record<string, number>).every((n) => n === 0)).toBe(true);
   });
 });

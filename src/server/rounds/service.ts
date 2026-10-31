@@ -24,7 +24,7 @@ import type { GameResultRecord } from "@/types/progression";
 import type { HintResponse, StartRoundResponse, SubmitRoundResponse } from "@/types/verified-play";
 import { RoundError } from "./errors";
 import { parseEntries } from "./payload";
-import type { ResultRow, RoundStore, SessionRow } from "./round-store";
+import type { ContributionOutcome, ResultPayload, ResultRow, RoundStore, SessionRow } from "./round-store";
 import { RECONCILIATION_RUSH, challengeFor } from "./rules";
 
 const NO_TARGET = "none";
@@ -102,6 +102,24 @@ function sessionHint(session: SessionRow, challenge: Challenge): RoundHint | nul
   return storedHint(challenge, session.hintErrorId, session.hintRequestedAt.getTime() - session.startedAt.getTime());
 }
 
+/** The stored result as a finalize payload (ignored by the database once a round is final). */
+function payloadFromRow(row: ResultRow): ResultPayload {
+  return {
+    department: row.department,
+    difficulty: row.difficulty,
+    completion: row.completion,
+    score: row.score,
+    max_score: row.max_score,
+    grade: row.grade,
+    errors_fixed: row.errors_fixed,
+    total_errors: row.total_errors,
+    incorrect_corrections: row.incorrect_corrections,
+    accuracy: row.accuracy === null ? null : Number(row.accuracy),
+    time_used_ms: row.time_used_ms,
+    time_remaining_ms: row.time_remaining_ms,
+  };
+}
+
 export interface VerifiedRoundService {
   startRound(userId: string): Promise<StartRoundResponse>;
   requestHint(userId: string, sessionId: string, body: unknown): Promise<HintResponse>;
@@ -123,12 +141,20 @@ export function createVerifiedRoundService({
   }
 
   /** Rebuilds the full response from what was stored, so retries get identical answers. */
-  function buildResponse(session: SessionRow, challenge: Challenge, row: ResultRow, created: boolean, totalXp: number): SubmitRoundResponse {
+  function buildResponse(
+    session: SessionRow,
+    challenge: Challenge,
+    row: ResultRow,
+    created: boolean,
+    totalXp: number,
+    contribution: ContributionOutcome | null,
+  ): SubmitRoundResponse {
     const entries: PlayerEntries = row.submission ?? {};
     const evaluation = evaluateRound(challenge, entries);
     const score = scoreRound(evaluation, row.time_remaining_ms, session.durationMs);
     return {
       record: resultRowToRecord(row),
+      contribution: { recorded: contribution?.status === "created" || contribution?.status === "duplicate" },
       created,
       totalXp,
       review: {
@@ -182,8 +208,10 @@ export function createVerifiedRoundService({
       const { session, challenge } = await loadOwned(userId, sessionId);
 
       // Already final: return the stored result. New cells are ignored and no XP is added.
+      // Finalizing again is a no-op that also records a missing contribution event (recovery).
       if (session.status === "finalized" && session.result) {
-        return buildResponse(session, challenge, session.result, false, session.totalXp);
+        const stored = await store.finalize(sessionId, userId, payloadFromRow(session.result), session.result.submission ?? {});
+        return buildResponse(session, challenge, stored.result, false, stored.totalXp, stored.contribution);
       }
       if (session.status !== "active") throw new RoundError("session_closed");
 
@@ -212,7 +240,7 @@ export function createVerifiedRoundService({
         entries,
       );
       // A concurrent request may have finalized first; the stored row wins either way.
-      return buildResponse(session, challenge, finalized.result, finalized.created, finalized.totalXp);
+      return buildResponse(session, challenge, finalized.result, finalized.created, finalized.totalXp, finalized.contribution);
     },
   };
 }

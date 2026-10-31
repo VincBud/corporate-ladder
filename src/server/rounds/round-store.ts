@@ -73,6 +73,12 @@ export interface ResultPayload {
   time_remaining_ms: number;
 }
 
+/** What finalize did about the company contribution event (server-internal; never sent to the browser). */
+export interface ContributionOutcome {
+  status: "created" | "duplicate" | "seed_replay" | "not_applicable";
+  eventId: string | null;
+}
+
 export interface RoundStore {
   createSession(userId: string, gameId: string, seed: string): Promise<CreatedSession>;
   getSession(sessionId: string, userId: string): Promise<SessionRow | null>;
@@ -82,7 +88,7 @@ export interface RoundStore {
     userId: string,
     result: ResultPayload,
     submission: Record<string, string>,
-  ): Promise<{ result: ResultRow; created: boolean; totalXp: number }>;
+  ): Promise<{ result: ResultRow; created: boolean; totalXp: number; contribution: ContributionOutcome | null }>;
 }
 
 type Json = Record<string, unknown>;
@@ -144,7 +150,13 @@ export function createRpcRoundStore(rpc: RpcCall): RoundStore {
         p_submission: submission,
       })) as Json;
       if (!data?.result) throw new RoundError("not_found");
-      return { result: data.result as ResultRow, created: Boolean(data.created), totalXp: Number(data.total_xp) };
+      const contribution = data.contribution as { status: ContributionOutcome["status"]; event_id: string | null } | undefined;
+      return {
+        result: data.result as ResultRow,
+        created: Boolean(data.created),
+        totalXp: Number(data.total_xp),
+        contribution: contribution ? { status: contribution.status, eventId: contribution.event_id ?? null } : null,
+      };
     },
   };
 }

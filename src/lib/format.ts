@@ -31,3 +31,17 @@ export function initials(name: string): string {
     .map((part) => part[0]?.toUpperCase() ?? "")
     .join("");
 }
+
+const compactFormat = new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 });
+
+/** "12.4M CB" */
+export function formatCompactMoney(amount: number): string {
+  return `${compactFormat.format(amount)} ${BRAND.currency}`;
+}
+
+/** "+4.2%" / "−1.0%" (one decimal, always signed, real minus sign). */
+export function formatSignedPercent(ratio: number): string {
+  const value = Math.round(ratio * 1000) / 10;
+  if (value === 0) return "0.0%";
+  return `${value > 0 ? "+" : "−"}${Math.abs(value).toFixed(1)}%`;
+}

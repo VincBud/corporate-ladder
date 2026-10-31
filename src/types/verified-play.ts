@@ -42,6 +42,11 @@ export interface VerifiedRoundReview {
 
 export interface SubmitRoundResponse {
   record: GameResultRecord;
+  /**
+   * Whether this round is part of the company's verified contribution
+   * ledger. Only a flag: no points, allocation or ranking for the player.
+   */
+  contribution: { recorded: boolean };
   /** False when this request returned a result stored by an earlier request. */
   created: boolean;
   totalXp: number;
