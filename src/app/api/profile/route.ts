@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { updateProfile } from "@/server/career/service";
 import { rateLimit, readJsonBody, requireUser, toErrorResponse } from "@/server/http";
 
-/** Updates the signed-in player's display name and/or department. */
+/** Updates the signed-in player's display name. Departments change through POST /api/department. */
 export async function PATCH(request: Request) {
   const auth = await requireUser();
   if (auth instanceof Response) return auth;

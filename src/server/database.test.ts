@@ -33,10 +33,11 @@ describe("profiles", () => {
     expect(rows.rows).toEqual([{ user_id: alice }]);
   });
 
-  it("allows editing display name and department only", async () => {
-    await t.asUser(alice, (db) => db.query("update public.profiles set display_name = 'Alice L.', department_id = 'finance' where user_id = $1", [alice]));
+  it("allows editing the display name only (departments change through select_department)", async () => {
+    await t.asUser(alice, (db) => db.query("update public.profiles set display_name = 'Alice L.' where user_id = $1", [alice]));
     const { rows } = await t.admin.query("select display_name, department_id from public.profiles where user_id = $1", [alice]);
-    expect(rows[0]).toEqual({ display_name: "Alice L.", department_id: "finance" });
+    expect(rows[0]).toEqual({ display_name: "Alice L.", department_id: null });
+    await expect(t.asUser(alice, (db) => db.query("update public.profiles set department_id = 'finance' where user_id = $1", [alice]))).rejects.toThrow(denied);
 
     await expect(t.asUser(alice, (db) => db.query("update public.profiles set employee_number = 'CL-000001'"))).rejects.toThrow(denied);
     await expect(t.asUser(alice, (db) => db.query("update public.profiles set user_id = $1", [bob]))).rejects.toThrow(denied);
@@ -51,8 +52,8 @@ describe("profiles", () => {
   it("rejects invalid display names and departments", async () => {
     await expect(t.asUser(alice, (db) => db.query("update public.profiles set display_name = 'x' where user_id = $1", [alice]))).rejects.toThrow(/check/);
     await expect(
-      t.asUser(alice, (db) => db.query("update public.profiles set department_id = 'nonexistent' where user_id = $1", [alice])),
-    ).rejects.toThrow(/foreign key/);
+      t.serviceRpc("select_department", { p_user_id: alice, p_department_id: "nonexistent", p_request_id: crypto.randomUUID() }),
+    ).rejects.toThrow(/unknown_department/);
   });
 
   it("sanitizes display names from sign-up metadata", async () => {

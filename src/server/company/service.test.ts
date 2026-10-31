@@ -55,7 +55,7 @@ describe("live company snapshot", () => {
     bob = await t.createUser("bob@example.com", "Bob");
     carol = await t.createUser("carol@example.com", "Carol");
     tester = await t.createUser("cl-live-test@example.com", "Tester", { testAccount: true });
-    await t.asUser(alice, (db) => db.query("update public.profiles set department_id = 'finance' where user_id = $1", [alice]));
+    await t.serviceRpc("select_department", { p_user_id: alice, p_department_id: "finance", p_request_id: crypto.randomUUID() });
     const snapshot = await fresh().getSnapshot();
     expect(snapshot.dataStatus).toBe("noActivity");
     expect(snapshot.employees.registered).toBe(3);

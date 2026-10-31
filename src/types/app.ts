@@ -4,6 +4,7 @@ export const APP_IDS = [
   "leaderboard",
   "profile",
   "company",
+  "departments",
 ] as const;
 
 export type AppId = (typeof APP_IDS)[number];

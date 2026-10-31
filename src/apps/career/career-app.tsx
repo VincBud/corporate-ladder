@@ -10,6 +10,7 @@ import { cn } from "@/lib/cn";
 import { formatNumber, formatSalary } from "@/lib/format";
 import { useCareer } from "@/performance/use-career";
 import type { AppProps } from "../types";
+import { DepartmentCareer } from "./department-career";
 import { PerformanceRecord } from "./performance-record";
 
 const LADDER_TOP_DOWN = [...RANKS].reverse();
@@ -30,7 +31,7 @@ export function CareerApp({ employee, openApp }: AppProps) {
     <div className="space-y-4 p-4 @xl:p-6">
       <section className="relative overflow-hidden rounded-xl border border-line bg-linear-to-br from-surface-raised to-surface p-5">
         <LadderIcon className="pointer-events-none absolute -top-6 -right-6 size-40 text-gold/8" />
-        <p className="text-[11px] font-medium tracking-wider text-fg-subtle uppercase">Current rank</p>
+        <p className="text-[11px] font-medium tracking-wider text-fg-subtle uppercase">Corporate rank · company-wide</p>
         <h3 className="mt-1 text-2xl font-semibold tracking-tight">{rank.title}</h3>
         <p className="mt-1 text-sm text-fg-muted">{rank.perk}</p>
 
@@ -62,6 +63,8 @@ export function CareerApp({ employee, openApp }: AppProps) {
           />
         </div>
       </section>
+
+      <DepartmentCareer career={career} onOpenDepartments={() => openApp("departments")} />
 
       <PerformanceRecord career={career} onPlay={() => openApp("spreadsheet-wars")} />
 

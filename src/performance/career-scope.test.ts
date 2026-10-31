@@ -12,7 +12,14 @@ const profile = (userId: string) => ({ userId, employeeNumber: "CL-001000", disp
 const record = (id: string, xp: number) => ({ ...resultInput(), id, xpAwarded: xp });
 
 function cloudResponse(userId: string, xp: number, records = [record(`${userId}-r1`, xp)]): CareerResponse {
-  return { profile: profile(userId), totalXp: xp, records, legacy: [], departments: [{ id: "finance", name: "Finance" }] };
+  return {
+    profile: profile(userId),
+    totalXp: xp,
+    records,
+    legacy: [],
+    departments: [{ id: "finance", name: "Finance" }],
+    departmentCareer: { current: null, history: [], nextTransferAt: null, canTransferNow: true, cooldownDays: 30, progress: [], serverNow: "2026-10-30T00:00:00Z" },
+  };
 }
 
 describe("career scope", () => {

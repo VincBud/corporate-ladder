@@ -4,6 +4,7 @@
  */
 import type { PlayerEntries } from "@/games/spreadsheet-wars/reconciliation-rush/validate";
 import type { CareerResponse, CloudProfile, ImportResponse } from "@/types/cloud-career";
+import type { SelectDepartmentResponse } from "@/types/department-career";
 import type { GameResultRecord } from "@/types/progression";
 import type { ApiErrorBody, HintResponse, StartRoundResponse, SubmitRoundResponse } from "@/types/verified-play";
 
@@ -46,6 +47,8 @@ export const api = {
   /** Public company snapshot; validate with parseCompanySnapshot (see company-source.ts). */
   company: () => request<unknown>("/api/company"),
   importLegacy: (records: readonly GameResultRecord[]) => post<ImportResponse>("/api/career/import", { records }),
-  updateProfile: (patch: { displayName?: string; departmentId?: string | null }) =>
+  /** Joins or transfers; requestId makes retries safe. */
+  selectDepartment: (departmentId: string, requestId: string) => post<SelectDepartmentResponse>("/api/department", { departmentId, requestId }),
+  updateProfile: (patch: { displayName?: string }) =>
     request<CloudProfile>("/api/profile", { method: "PATCH", body: JSON.stringify(patch) }),
 };

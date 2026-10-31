@@ -45,3 +45,8 @@ export function formatSignedPercent(ratio: number): string {
   if (value === 0) return "0.0%";
   return `${value > 0 ? "+" : "−"}${Math.abs(value).toFixed(1)}%`;
 }
+
+/** "Nov 30, 2026" for an ISO timestamp (UTC, so server and client agree). */
+export function formatTimestampDate(iso: string): string {
+  return dateFormat.format(new Date(iso));
+}

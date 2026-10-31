@@ -1,5 +1,6 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { summarizeDepartmentCareer, type MembershipRow } from "@/career/department-membership";
 import { parseRecord } from "@/performance/schema";
 import type { CareerResponse, CloudProfile, LegacyRecord } from "@/types/cloud-career";
 import type { GameResultRecord } from "@/types/progression";
@@ -32,14 +33,15 @@ function fail(error: { message: string } | null) {
  * Security limits every query to their rows.
  */
 export async function getCareer(supabase: SupabaseClient, userId: string): Promise<CareerResponse> {
-  const [profile, results, legacy, xp, departments] = await Promise.all([
+  const [profile, results, legacy, xp, departments, memberships] = await Promise.all([
     supabase.from("profiles").select("user_id, employee_number, display_name, department_id, created_at").eq("user_id", userId).maybeSingle(),
     supabase.from("game_results").select(RESULT_COLUMNS).order("completed_at", { ascending: false }).limit(HISTORY_LIMIT),
     supabase.from("legacy_practice_results").select("local_id, summary, imported_at").order("played_at", { ascending: false }).limit(HISTORY_LIMIT),
     supabase.rpc("get_my_career_xp"),
     supabase.from("departments").select("id, name").order("name"),
+    supabase.from("department_memberships").select("id, department_id, started_at, ended_at, start_reason, end_reason").order("started_at", { ascending: false }),
   ]);
-  for (const response of [profile, results, legacy, xp, departments]) fail(response.error);
+  for (const response of [profile, results, legacy, xp, departments, memberships]) fail(response.error);
   if (!profile.data) throw new RoundError("unknown_player");
 
   const legacyRecords: LegacyRecord[] = [];
@@ -48,12 +50,14 @@ export async function getCareer(supabase: SupabaseClient, userId: string): Promi
     if (record) legacyRecords.push({ localId: row.local_id, record, importedAt: row.imported_at });
   }
 
+  const records = ((results.data ?? []) as Omit<ResultRow, "submission">[]).map((row) => resultRowToRecord({ ...row, submission: {} }));
   return {
     profile: toProfile(profile.data as ProfileRow),
     totalXp: Number(xp.data ?? 0),
-    records: ((results.data ?? []) as Omit<ResultRow, "submission">[]).map((row) => resultRowToRecord({ ...row, submission: {} })),
+    records,
     legacy: legacyRecords,
     departments: (departments.data ?? []) as { id: string; name: string }[],
+    departmentCareer: summarizeDepartmentCareer((memberships.data ?? []) as MembershipRow[], records, new Date()),
   };
 }
 
@@ -68,10 +72,16 @@ export async function importLegacy(rpc: RpcCall, userId: string, body: unknown) 
 
 const CONTROL_CHARACTERS = /\p{Cc}/u;
 
-/** Updates editable profile fields as the player (column grants + RLS apply). */
+/**
+ * Updates editable profile fields as the player (column grants + RLS apply).
+ * Departments change only through POST /api/department.
+ */
 export async function updateProfile(supabase: SupabaseClient, userId: string, body: unknown): Promise<CloudProfile> {
   if (typeof body !== "object" || body === null) throw new RoundError("invalid_payload");
   const input = body as { displayName?: unknown; departmentId?: unknown };
+  if (input.departmentId !== undefined) {
+    throw new RoundError("invalid_payload", "Departments change through a department transfer.");
+  }
   const patch: Record<string, string | null> = {};
 
   if (input.displayName !== undefined) {
@@ -81,12 +91,6 @@ export async function updateProfile(supabase: SupabaseClient, userId: string, bo
     }
     patch.display_name = name;
   }
-  if (input.departmentId !== undefined) {
-    if (input.departmentId !== null && (typeof input.departmentId !== "string" || !/^[a-z][a-z0-9-]{1,30}$/.test(input.departmentId))) {
-      throw new RoundError("invalid_payload", "Unknown department.");
-    }
-    patch.department_id = input.departmentId as string | null;
-  }
   if (Object.keys(patch).length === 0) throw new RoundError("invalid_payload", "Nothing to update.");
 
   const { data, error } = await supabase
@@ -95,7 +99,7 @@ export async function updateProfile(supabase: SupabaseClient, userId: string, bo
     .eq("user_id", userId)
     .select("user_id, employee_number, display_name, department_id, created_at")
     .maybeSingle();
-  if (error) throw new RoundError("invalid_payload", error.code === "23503" ? "Unknown department." : "Could not update the profile.");
+  if (error) throw new RoundError("invalid_payload", "Could not update the profile.");
   if (!data) throw new RoundError("unknown_player");
   return toProfile(data as ProfileRow);
 }

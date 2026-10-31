@@ -72,11 +72,9 @@ describe("privilege allowlist", () => {
     }
     expect(found.sort()).toEqual(
       [
-        "authenticated:profiles.department_id:UPDATE",
         "authenticated:profiles.display_name:UPDATE",
         "service_role:game_sessions.deadline_at:UPDATE",
         "service_role:game_sessions.started_at:UPDATE",
-        "service_role:profiles.department_id:UPDATE",
         "service_role:profiles.display_name:UPDATE",
       ].sort(),
     );
@@ -93,9 +91,11 @@ describe("privilege allowlist", () => {
     };
     const reference = ["contribution_allocations", "contribution_formulas", "departments", "game_rules"];
     expect(await readable("anon")).toEqual(reference);
-    expect(await readable("authenticated")).toEqual([...reference, "game_results", "legacy_practice_results", "profiles", "xp_ledger"].sort());
+    expect(await readable("authenticated")).toEqual(
+      [...reference, "department_memberships", "game_results", "legacy_practice_results", "profiles", "xp_ledger"].sort(),
+    );
     expect(await readable("service_role")).toEqual(
-      [...reference, "contribution_events", "game_results", "game_sessions", "legacy_practice_results", "profiles", "xp_ledger"].sort(),
+      [...reference, "contribution_events", "department_memberships", "game_results", "game_sessions", "legacy_practice_results", "profiles", "xp_ledger"].sort(),
     );
   });
 
@@ -120,6 +120,7 @@ describe("privilege allowlist", () => {
       "get_my_career_xp",
       "import_legacy_results",
       "record_game_hint",
+      "select_department",
       "utc_quarter",
     ]);
   });

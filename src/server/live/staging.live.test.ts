@@ -15,7 +15,8 @@ import { challengeFor } from "@/server/rounds/rules";
 import { periodOf } from "@/simulation/periods";
 import { parseCompanySnapshot, type CompanySnapshot } from "@/simulation/source";
 import type { CareerResponse } from "@/types/cloud-career";
-import type { HintResponse, StartRoundResponse, SubmitRoundResponse } from "@/types/verified-play";
+import type { SelectDepartmentResponse } from "@/types/department-career";
+import type { ApiErrorBody, HintResponse, StartRoundResponse, SubmitRoundResponse } from "@/types/verified-play";
 
 const URL_ = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 const PUBLISHABLE = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ?? "";
@@ -278,12 +279,12 @@ describe.skipIf(!configured || !BASE)("live: verified rounds over HTTP", () => {
     expect(career.totalXp).toBe(xpBefore);
   });
 
-  it("updates the profile with validation", async () => {
-    expect((await api(alice, "PATCH", "/api/profile", { displayName: "Alice Verified", departmentId: "finance" })).status).toBe(200);
+  it("updates the profile with validation (departments change only through a transfer)", async () => {
+    expect((await api(alice, "PATCH", "/api/profile", { displayName: "Alice Verified" })).status).toBe(200);
     expect((await api(alice, "PATCH", "/api/profile", { displayName: "x" })).status).toBe(400);
-    expect((await api(alice, "PATCH", "/api/profile", { departmentId: "nowhere" })).status).toBe(400);
+    expect((await api(alice, "PATCH", "/api/profile", { departmentId: "finance" })).status).toBe(400);
     const career = (await api<CareerResponse>(alice, "GET", "/api/career")).data;
-    expect(career.profile).toMatchObject({ displayName: "Alice Verified", departmentId: "finance" });
+    expect(career.profile).toMatchObject({ displayName: "Alice Verified", departmentId: null });
   });
 });
 
@@ -532,6 +533,90 @@ describe.skipIf(!configured || !BASE)("live: authoritative data hardening", () =
   it("reports no orphaned or contradictory records after all of the above", async () => {
     const { data, error } = await admin!.rpc("check_progression_integrity");
     expect(error).toBeNull();
+    expect(Object.values(data as Record<string, number>).every((n) => n === 0)).toBe(true);
+  });
+});
+
+describe.skipIf(!configured || !BASE)("live: departments over HTTP", () => {
+  const select = (user: TestUser | null, departmentId: string, requestId: string = crypto.randomUUID(), extra: object = {}) =>
+    api<SelectDepartmentResponse & ApiErrorBody>(user, "POST", "/api/department", { departmentId, requestId, ...extra });
+
+  it("requires a signed-in player", async () => {
+    expect((await select(null, "finance")).status).toBe(401);
+  });
+
+  it("joins a department and reflects it in the profile and career", async () => {
+    const quinn = await createUser("dept-quinn");
+    const joined = await select(quinn, "controlling");
+    expect(joined.status).toBe(200);
+    expect(joined.data).toMatchObject({ status: "joined", membership: { departmentId: "controlling", startReason: "initial" } });
+    const career = (await api<CareerResponse>(quinn, "GET", "/api/career")).data;
+    expect(career.profile.departmentId).toBe("controlling");
+    expect(career.departmentCareer.current?.departmentId).toBe("controlling");
+    expect(career.departmentCareer.progress[0]).toMatchObject({ departmentId: "controlling", positionIndex: 0 });
+    expect(career.departmentCareer.canTransferNow).toBe(false);
+    const cooldown = Date.parse(career.departmentCareer.nextTransferAt!) - Date.parse(career.departmentCareer.current!.startedAt);
+    expect(cooldown).toBe(30 * 86_400_000);
+  });
+
+  it("is idempotent per request and enforces the transfer cooldown on the server", async () => {
+    const rae = await createUser("dept-rae");
+    const requestId = crypto.randomUUID();
+    expect((await select(rae, "finance", requestId)).data.status).toBe("joined");
+    expect((await select(rae, "finance", requestId)).data.status).toBe("duplicate");
+    const early = await select(rae, "sales", crypto.randomUUID(), { now: "2099-01-01T00:00:00Z", startedAt: "2000-01-01T00:00:00Z" });
+    expect(early.status).toBe(409);
+    expect(early.data.error.code).toBe("transfer_cooldown");
+    expect((await select(rae, "finance")).data.error.code).toBe("already_member");
+    expect((await select(rae, "space-force")).status).toBe(400);
+    expect((await api(rae, "POST", "/api/department", { departmentId: "sales" })).status).toBe(400);
+    const { data } = await rae.db.from("department_memberships").select("department_id, ended_at");
+    expect(data).toEqual([{ department_id: "finance", ended_at: null }]);
+  });
+
+  it("lets only one of several concurrent first selections through", async () => {
+    const sam = await createUser("dept-sam");
+    const results = await Promise.all(["sales", "marketing", "it", "operations", "legal"].map((d) => select(sam, d)));
+    expect(results.filter((r) => r.status === 200)).toHaveLength(1);
+    expect(results.filter((r) => r.status === 409)).toHaveLength(4);
+    const { data } = await sam.db.from("department_memberships").select("id");
+    expect(data).toHaveLength(1);
+  });
+
+  it("keeps membership history private and out of reach of direct writes", async () => {
+    const tia = await createUser("dept-tia");
+    const uma = await createUser("dept-uma");
+    await select(tia, "people");
+    await select(uma, "strategy");
+    const own = await tia.db.from("department_memberships").select("user_id");
+    expect(own.data).toEqual([{ user_id: tia.id }]);
+    expect((await tia.db.from("department_memberships").insert({ user_id: tia.id, department_id: "sales", start_reason: "transfer" })).error?.message).toMatch(/permission denied/);
+    expect((await tia.db.from("department_memberships").update({ department_id: "sales" }).eq("user_id", tia.id)).error?.message).toMatch(/permission denied/);
+    expect((await tia.db.from("profiles").update({ department_id: "sales" }).eq("user_id", tia.id)).error?.message).toMatch(/permission denied/);
+    expect((await admin!.from("profiles").update({ department_id: "sales" }).eq("user_id", tia.id)).error?.message).toMatch(/permission denied/);
+    expect((await admin!.from("department_memberships").delete().eq("user_id", tia.id)).error?.message).toMatch(/permission denied/);
+    expect((await tia.db.rpc("select_department", { p_user_id: tia.id, p_department_id: "sales", p_request_id: crypto.randomUUID() })).error).not.toBeNull();
+  });
+
+  it("counts verified rounds toward the department career without touching XP or contributions", async () => {
+    const vic = await createUser("dept-vic");
+    await select(vic, "controlling");
+    const start = await api<StartRoundResponse>(vic, "POST", "/api/rounds");
+    const { entries } = await answersFor(start.data.sessionId, vic.id);
+    const submit = await api<SubmitRoundResponse>(vic, "POST", `/api/rounds/${start.data.sessionId}/submit`, { entries: entries() });
+    const career = (await api<CareerResponse>(vic, "GET", "/api/career")).data;
+    expect(career.departmentCareer.progress[0]).toMatchObject({ departmentId: "controlling", qualifyingRounds: 1, positionIndex: 0 });
+    expect(career.totalXp).toBe(submit.data.record.xpAwarded);
+    expect(await contributionEvents(vic.id)).toHaveLength(1);
+  });
+
+  it("deletes membership history with the account and leaves no inconsistencies", async () => {
+    const wes = await createUser("dept-wes");
+    await select(wes, "it");
+    expect((await admin!.auth.admin.deleteUser(wes.id)).error).toBeNull();
+    const { count } = await admin!.from("department_memberships").select("id", { count: "exact", head: true }).eq("user_id", wes.id);
+    expect(count).toBe(0);
+    const { data } = await admin!.rpc("check_progression_integrity");
     expect(Object.values(data as Record<string, number>).every((n) => n === 0)).toBe(true);
   });
 });

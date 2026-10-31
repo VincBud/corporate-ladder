@@ -6,6 +6,8 @@ export interface Employee {
   displayName: string;
   employeeNumber: string;
   department: string;
+  /** Position in the department's career track (signed-in members only). */
+  jobTitle?: string | null;
   manager: string;
   location: string;
   xp: number;

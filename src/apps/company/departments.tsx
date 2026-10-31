@@ -1,3 +1,4 @@
+import { DEPARTMENT_TRACKS } from "@/career/department-tracks";
 import { Badge, type BadgeTone } from "@/components/ui/badge";
 import { Panel } from "@/components/ui/panel";
 import { cn } from "@/lib/cn";
@@ -134,8 +135,7 @@ export function DepartmentDirectory({ rules }: { rules: readonly GameContributio
                 <div className="flex gap-2">
                   <dt className="w-16 shrink-0 text-fg-subtle">Career</dt>
                   <dd>
-                    {department.careerPath.entryTitle} → {department.careerPath.seniorTitle} → {department.careerPath.executiveTitle}{" "}
-                    <span className="text-fg-subtle">(planned)</span>
+                    {DEPARTMENT_TRACKS[department.id][0].title} → {DEPARTMENT_TRACKS[department.id].at(-1)!.title}
                   </dd>
                 </div>
               </dl>

@@ -62,7 +62,8 @@ proxy.ts ── refreshes session cookies on each request
 
 | Table | Purpose | Browser access |
 |---|---|---|
-| `profiles` | One per auth user (created by trigger): employee number, display name, optional department | Read own; update `display_name`, `department_id` only |
+| `profiles` | One per auth user (created by trigger): employee number, display name, current department (only via `select_department`) | Read own; update `display_name` only |
+| `department_memberships` | Append-only membership history (see [careers.md](careers.md)) | Read own |
 | `departments` | Canonical departments (`kind`: operating / support) | Read |
 | `game_rules` | Pinned rules per game version: duration, tolerance, XP divisor, rate limit | Read |
 | `game_sessions` | Server-created rounds: secret seed, start, deadline, hint, status | **None** (the seed regenerates the answer key) |
@@ -183,9 +184,9 @@ Every new table gets Supabase's broad default grants. `server/security.test.ts` 
 | `it` | IT & Engineering (was "IT") | operating |
 | `marketing` | Marketing | operating |
 | `legal` | Legal | support |
-| `strategy` | Strategy | support |
+| `strategy` | Corporate Strategy (was "Strategy") | support |
 
-Existing ids were kept, so no profile assignment changed. Only display names were updated, and one department was added. The company simulation uses the same ids. A player's department (membership) never decides which metrics a game feeds; the game's formula does.
+Existing ids were kept, so no profile assignment changed. Only display names were updated, and one department was added. Since Department Careers v0.1, a player's department changes only through `select_department` (30-day transfer cooldown, append-only history); see [careers.md](careers.md). The company simulation uses the same ids. A player's department (membership) never decides which metrics a game feeds; the game's formula does.
 
 ## Guest-to-account migration
 
@@ -201,12 +202,13 @@ Signed-in players with guest rounds in this browser see an **Import as legacy pr
 |---|---|---|
 | Contribution events: transactionality, duplicates, concurrency, seed replays, quarters, authorization, append-only guards, recovery, backfill, formula versions | Vitest + PGlite (`server/contributions.test.ts`) | The ledger's guarantees at the Postgres level |
 | Privilege allowlist (every table, column, sequence, function and role), service-role write attempts, owner-level guards, account deletion, integrity audit | Vitest + PGlite (`server/security.test.ts`) | Authoritative data can only change through the trusted functions |
+| Department membership: joining, idempotency, cooldown boundaries, transfers, returning, concurrency, client timestamps, RLS and direct writes, owner-level guards, account deletion, XP/contribution preservation, workforce counts | Vitest + PGlite (`server/departments/service.test.ts`), pure track/policy tests (`career/department-*.test.ts`) | Membership rules hold in the database |
 | Live company: aggregation from real verified rounds, test-account and guest-import exclusion, current quarter, caching and invalidation, failures, authorization, privacy | Vitest + PGlite (`server/company/service.test.ts`), handler tests (`http.test.ts`), pure model tests (`simulation/live.test.ts`) | The snapshot is correct, aggregate-only and fails safely |
 | Migration, RLS, grants, constraints, SQL functions | Vitest + **PGlite** (real Postgres in WASM) running the actual migration with Supabase-like roles and default grants | Postgres-level security and exactly-once logic |
 | Round lifecycle (start, hint, submit, deadlines, tampering, cross-user, duplicates, replay, rules versions) | Service + RPC adapter + real SQL functions in PGlite | Server authority over scores, time and XP |
 | Auth state, career scopes, cloud repository, guest import | Unit tests with fakes | Client state handling |
 
-| Live staging: Supabase Auth, PostgREST, RLS, the full HTTP lifecycle, truly concurrent submissions, deadlines, rate limits, import, profile, contribution events (creation, quarters, concurrency, access, cascade on account deletion), live company (`GET /api/company`, test-account exclusion, update right after a verified round, removal after account deletion), hardening (service-role writes denied, account deletion, integrity audit) | `npm run test:live` (opt-in; needs `.env.local`, plus `LIVE_BASE_URL` pointing at a running build). Creates and deletes test users | The deployed security model on a real Supabase project |
+| Live staging: Supabase Auth, PostgREST, RLS, the full HTTP lifecycle, truly concurrent submissions, deadlines, rate limits, import, profile, contribution events (creation, quarters, concurrency, access, cascade on account deletion), live company (`GET /api/company`, test-account exclusion, update right after a verified round, removal after account deletion), hardening (service-role writes denied, account deletion, integrity audit), departments (join, profile/career sync, idempotency, cooldown, concurrency, RLS, direct writes, account deletion) | `npm run test:live` (opt-in; needs `.env.local`, plus `LIVE_BASE_URL` pointing at a running build). Creates and deletes test users | The deployed security model on a real Supabase project |
 
 **Still not automated:** the real sign-up confirmation and password-reset emails, because a test inbox is needed.
 

@@ -1,3 +1,4 @@
+import type { DepartmentCareerSummary } from "./department-career";
 import type { GameResultRecord } from "./progression";
 
 /** API contract for the signed-in player's cloud career. */
@@ -24,6 +25,8 @@ export interface CareerResponse {
   records: GameResultRecord[];
   legacy: LegacyRecord[];
   departments: { id: string; name: string }[];
+  /** Membership history, transfer eligibility and department career progress. */
+  departmentCareer: DepartmentCareerSummary;
 }
 
 export interface ImportResponse {

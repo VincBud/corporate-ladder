@@ -20,7 +20,13 @@ export function createCloudCareerRepository(fetchCareer: () => Promise<CareerRes
           status: data.records.length ? "ok" : "empty",
           writable: false,
           droppedRecords: 0,
-          cloud: { totalXp: data.totalXp, profile: data.profile, legacy: data.legacy, departments: data.departments },
+          cloud: {
+            totalXp: data.totalXp,
+            profile: data.profile,
+            legacy: data.legacy,
+            departments: data.departments,
+            departmentCareer: data.departmentCareer,
+          },
         };
       } catch (error) {
         const status = error instanceof ApiError && (error.status === 401 || error.status === 403) ? "unauthorized" : "offline";

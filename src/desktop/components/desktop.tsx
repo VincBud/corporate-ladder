@@ -18,6 +18,7 @@ import {
 import { DesktopIcons } from "./desktop-icons";
 import { Taskbar } from "./taskbar";
 import { AuthNoticeToast } from "./auth-notice-toast";
+import { DepartmentPrompt, useDepartmentPromptDismissed } from "./department-prompt";
 import { PromotionToast } from "./promotion-toast";
 import { Wallpaper } from "./wallpaper";
 import { AnnouncementWidget } from "./widgets/announcement-widget";
@@ -46,6 +47,11 @@ export function Desktop({ employee: baseEmployee }: { employee: Employee }) {
 
   const focusedAppId = selectFocusedAppId(windowState);
   const windowsInOpenOrder = [...windowState.windows].sort((a, b) => a.openSeq - b.openSeq);
+  // Signed-in employees without a department get an optional, dismissible invitation.
+  const promptUserId = auth.status === "signedIn" && career.departmentCareer && !career.departmentCareer.current ? (auth.user?.id ?? "") : "";
+  const promptDismissed = useDepartmentPromptDismissed(promptUserId);
+  const showDepartmentPrompt =
+    promptUserId !== "" && promptDismissed === false && !windowState.windows.some((w) => w.appId === "departments");
 
   // Move keyboard focus into whichever window becomes active.
   useEffect(() => {
@@ -163,6 +169,7 @@ export function Desktop({ employee: baseEmployee }: { employee: Employee }) {
         {career.promotion && careerScope && (
           <PromotionToast change={career.promotion} onDismiss={() => getCareerStore(careerScope).dismissPromotion()} />
         )}
+        {showDepartmentPrompt && <DepartmentPrompt userId={promptUserId} onChoose={() => openApp("departments")} />}
         {auth.notice && (
           <AuthNoticeToast notice={auth.notice} onOpenProfile={() => openApp("profile")} onDismiss={() => getAuthStore().dismissNotice()} />
         )}

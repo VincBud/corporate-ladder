@@ -5,6 +5,7 @@ import { MIN_PASSWORD_LENGTH, type AuthResult } from "@/auth/auth-store";
 import { getAuthStore, useAuth } from "@/auth/use-auth";
 import { Badge } from "@/components/ui/badge";
 import { Panel } from "@/components/ui/panel";
+import { departmentDisplayName } from "@/config/departments";
 import { cn } from "@/lib/cn";
 import type { CareerState } from "@/performance/career-store";
 import { forgetSignedInCareers, getCareerStore, useActiveCareerScope } from "@/performance/use-career";
@@ -167,14 +168,14 @@ function SetNewPassword() {
   );
 }
 
-function SignedIn({ career }: { career: CareerState }) {
+function SignedIn({ career, onOpenDepartments }: { career: CareerState; onOpenDepartments: () => void }) {
   const auth = useAuth();
   const scope = useActiveCareerScope();
   const profile = career.profile;
   const [displayName, setDisplayName] = useState<string | null>(null);
   const { pending, feedback, run } = useAction();
 
-  const saveProfile = (patch: { displayName?: string; departmentId?: string | null }) =>
+  const saveProfile = (patch: { displayName: string }) =>
     run(async () => {
       try {
         await api.updateProfile(patch);
@@ -232,24 +233,15 @@ function SignedIn({ career }: { career: CareerState }) {
               <input id={id} className={inputClass} value={displayName ?? profile.displayName} onChange={(e) => setDisplayName(e.target.value)} maxLength={40} />
             )}
           </Field>
-          <Field label="Department" hint="Optional. Departments will matter later.">
-            {(id) => (
-              <select
-                id={id}
-                className={inputClass}
-                value={profile.departmentId ?? ""}
-                disabled={pending}
-                onChange={(e) => void saveProfile({ departmentId: e.target.value || null })}
-              >
-                <option value="">Unassigned</option>
-                {career.departments.map((d) => (
-                  <option key={d.id} value={d.id}>
-                    {d.name}
-                  </option>
-                ))}
-              </select>
-            )}
-          </Field>
+          <div className="space-y-1">
+            <p className="text-[12px] text-fg-muted">Department</p>
+            <p className="text-[13px]">
+              {departmentDisplayName(profile.departmentId) ?? "Not chosen yet"}{" "}
+              <button type="button" onClick={onOpenDepartments} className="ml-1 text-xs text-accent hover:underline">
+                {profile.departmentId ? "Transfer" : "Choose"}
+              </button>
+            </p>
+          </div>
           <div className="flex items-center gap-3 @lg:col-span-2">
             <button type="submit" disabled={pending || displayName === null} className={primaryButton}>
               Save name
@@ -263,7 +255,7 @@ function SignedIn({ career }: { career: CareerState }) {
 }
 
 /** Account state for the Employee Profile: guest sign-in, account details, or recovery. */
-export function AccountPanel({ career }: { career: CareerState }) {
+export function AccountPanel({ career, onOpenDepartments }: { career: CareerState; onOpenDepartments: () => void }) {
   const auth = useAuth();
   return (
     <Panel title="Account" description={auth.status === "signedIn" ? "Verified progress, saved to your account" : "Guest or cloud progress"}>
@@ -276,7 +268,7 @@ export function AccountPanel({ career }: { career: CareerState }) {
       ) : auth.status === "signedIn" && auth.recovery ? (
         <SetNewPassword />
       ) : auth.status === "signedIn" ? (
-        <SignedIn career={career} />
+        <SignedIn career={career} onOpenDepartments={onOpenDepartments} />
       ) : (
         <SignedOut />
       )}

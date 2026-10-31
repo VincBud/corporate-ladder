@@ -7,6 +7,7 @@
  */
 import { emptyCareerSave, parseCareerSave, type CareerSave } from "@/performance/schema";
 import type { CloudProfile, LegacyRecord } from "@/types/cloud-career";
+import type { DepartmentCareerSummary } from "@/types/department-career";
 
 export const CAREER_STORAGE_KEY = "corporate-ladder.career";
 
@@ -38,6 +39,7 @@ export interface LoadResult {
     profile: CloudProfile;
     legacy: LegacyRecord[];
     departments: { id: string; name: string }[];
+    departmentCareer: DepartmentCareerSummary;
   };
 }
 

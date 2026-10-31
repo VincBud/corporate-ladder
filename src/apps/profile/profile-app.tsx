@@ -14,7 +14,7 @@ import { useCareer } from "@/performance/use-career";
 import type { AppProps } from "../types";
 import { AccountPanel } from "./account-panel";
 
-export function ProfileApp({ employee }: AppProps) {
+export function ProfileApp({ employee, openApp }: AppProps) {
   const { progress, rank } = getCareerSnapshot(employee.xp);
   const unlocked = new Set(employee.unlockedAchievements);
   const id = useId();
@@ -22,9 +22,10 @@ export function ProfileApp({ employee }: AppProps) {
 
   const details = [
     ["Department", employee.department],
+    ["Job title", employee.jobTitle ?? (employee.isGuest ? "Guest (no department)" : "Not assigned yet")],
     ["Manager", employee.manager],
     ["Location", employee.location],
-    ["Start date", formatIsoDate(employee.joinedOn)],
+    ["Join date", formatIsoDate(employee.joinedOn)],
   ] as const;
 
   const stats = [
@@ -73,6 +74,24 @@ export function ProfileApp({ employee }: AppProps) {
             </div>
           ))}
         </dl>
+        {!employee.isGuest && (
+          <div className="mt-4 flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => openApp("career")}
+              className="rounded-lg bg-white/6 px-3 py-1.5 text-xs font-medium text-fg ring-1 ring-line transition-colors ring-inset hover:bg-white/10"
+            >
+              Department career &amp; transfer history
+            </button>
+            <button
+              type="button"
+              onClick={() => openApp("departments")}
+              className="rounded-lg bg-white/6 px-3 py-1.5 text-xs font-medium text-fg ring-1 ring-line transition-colors ring-inset hover:bg-white/10"
+            >
+              {employee.jobTitle ? "Departments" : "Choose a department"}
+            </button>
+          </div>
+        )}
       </section>
 
       <dl className="grid grid-cols-2 gap-3 @lg:grid-cols-4">
@@ -84,7 +103,7 @@ export function ProfileApp({ employee }: AppProps) {
         ))}
       </dl>
 
-      <AccountPanel career={career} />
+      <AccountPanel career={career} onOpenDepartments={() => openApp("departments")} />
 
       <Panel title="Achievements" description={`${unlocked.size} of ${ACHIEVEMENTS.length} unlocked`}>
         <ul className="grid gap-2 @lg:grid-cols-2">

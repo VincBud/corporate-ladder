@@ -1,7 +1,8 @@
-import { BuildingIcon, GridIcon, IdBadgeIcon, LadderIcon, TrophyIcon } from "@/components/icons";
+import { BriefcaseIcon, BuildingIcon, GridIcon, IdBadgeIcon, LadderIcon, TrophyIcon } from "@/components/icons";
 import { APP_IDS, type AppId } from "@/types/app";
 import { CareerApp } from "./career/career-app";
 import { CompanyApp } from "./company/company-app";
+import { DepartmentsApp } from "./departments/departments-app";
 import { LeaderboardApp } from "./leaderboard/leaderboard-app";
 import { ProfileApp } from "./profile/profile-app";
 import { SpreadsheetWarsApp } from "./spreadsheet-wars/spreadsheet-wars-app";
@@ -53,6 +54,15 @@ const APP_REGISTRY: Record<AppId, AppDefinition> = {
     tint: "from-sky-500 to-blue-800",
     window: { initial: { width: 980, height: 700 }, min: { width: 440, height: 380 } },
     component: CompanyApp,
+  },
+  departments: {
+    id: "departments",
+    title: "Departments",
+    description: "Join a department, see its career track, request a transfer.",
+    icon: BriefcaseIcon,
+    tint: "from-rose-400 to-fuchsia-700",
+    window: { initial: { width: 900, height: 660 }, min: { width: 420, height: 380 } },
+    component: DepartmentsApp,
   },
 };
 

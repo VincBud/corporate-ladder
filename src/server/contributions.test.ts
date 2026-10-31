@@ -80,7 +80,7 @@ describe("canonical departments", () => {
 
   it("match the database after all migrations", async () => {
     const { rows } = await h.t.admin.query("select id, name, kind from public.departments order by id");
-    expect(rows).toEqual([...CANONICAL_DEPARTMENTS].sort((a, b) => a.id.localeCompare(b.id)));
+    expect(rows).toEqual([...CANONICAL_DEPARTMENTS].map(({ id, name, kind }) => ({ id, name, kind })).sort((a, b) => a.id.localeCompare(b.id)));
   });
 
   it("use the canonical ids for every simulation department and metric", () => {
@@ -89,13 +89,13 @@ describe("canonical departments", () => {
     expect(METRICS.every((m) => operating.includes(m.departmentId))).toBe(true);
   });
 
-  it("keep existing profile assignments valid", async () => {
-    const user = await h.t.createUser("legacy-dept@example.com");
-    for (const id of ["people", "it", "legal", "strategy", "controlling"]) {
-      await h.t.asUser(user, (db) => db.query("update public.profiles set department_id = $1 where user_id = $2", [id, user]));
+  it("are all selectable as a department", async () => {
+    for (const { id } of CANONICAL_DEPARTMENTS) {
+      const user = await h.t.createUser(`dept-${id}@example.com`);
+      await h.t.serviceRpc("select_department", { p_user_id: user, p_department_id: id, p_request_id: crypto.randomUUID() });
+      const { rows } = await h.t.admin.query("select department_id from public.profiles where user_id = $1", [user]);
+      expect(rows[0]).toEqual({ department_id: id });
     }
-    const { rows } = await h.t.admin.query("select department_id from public.profiles where user_id = $1", [user]);
-    expect(rows[0]).toEqual({ department_id: "controlling" });
   });
 });
 

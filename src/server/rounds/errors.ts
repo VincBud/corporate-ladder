@@ -6,7 +6,10 @@ export type RoundErrorCode =
   | "deadline_passed"
   | "rate_limited"
   | "unsupported_rules"
-  | "unknown_player";
+  | "unknown_player"
+  | "unknown_department"
+  | "already_member"
+  | "transfer_cooldown";
 
 const STATUS: Record<RoundErrorCode, number> = {
   invalid_payload: 400,
@@ -16,6 +19,9 @@ const STATUS: Record<RoundErrorCode, number> = {
   rate_limited: 429,
   unsupported_rules: 500,
   unknown_player: 403,
+  unknown_department: 400,
+  already_member: 409,
+  transfer_cooldown: 409,
 };
 
 const MESSAGES: Record<RoundErrorCode, string> = {
@@ -26,6 +32,9 @@ const MESSAGES: Record<RoundErrorCode, string> = {
   rate_limited: "Too many requests. Please wait a moment.",
   unsupported_rules: "This round uses rules the server no longer supports.",
   unknown_player: "Your employee profile is missing.",
+  unknown_department: "That department doesn't exist.",
+  already_member: "You already work in that department.",
+  transfer_cooldown: "Transfers are possible 30 days after joining your current department.",
 };
 
 export class RoundError extends Error {
@@ -48,6 +57,10 @@ export function fromDatabaseError(message: string): RoundError | null {
     deadline_passed: "deadline_passed",
     unknown_player: "unknown_player",
     unknown_game: "unsupported_rules",
+    unknown_department: "unknown_department",
+    already_member: "already_member",
+    transfer_cooldown: "transfer_cooldown",
+    invalid_request: "invalid_payload",
   };
   for (const [needle, code] of Object.entries(known)) {
     if (message.includes(needle)) return new RoundError(code);
