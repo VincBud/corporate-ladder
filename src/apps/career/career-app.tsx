@@ -10,6 +10,7 @@ import { cn } from "@/lib/cn";
 import { formatNumber, formatSalary } from "@/lib/format";
 import { useCareer } from "@/performance/use-career";
 import type { AppProps } from "../types";
+import { AchievementSummary } from "../achievements/achievement-summary";
 import { DepartmentCareer } from "./department-career";
 import { PerformanceRecord } from "./performance-record";
 
@@ -133,6 +134,8 @@ export function CareerApp({ employee, openApp }: AppProps) {
               </dl>
             </Panel>
           )}
+
+          <AchievementSummary career={career} onOpen={() => openApp("profile")} />
 
           <Panel title="Earning XP">
             <ul className="space-y-2.5">

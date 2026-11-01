@@ -1,4 +1,5 @@
 import type { DepartmentProgress } from "@/career/department-tracks";
+import type { AchievementUnlock } from "./achievements";
 
 /** One membership period (department_memberships row). Timestamps are database time. */
 export interface MembershipRecord {
@@ -26,6 +27,8 @@ export interface DepartmentCareerSummary {
 }
 
 export interface SelectDepartmentResponse {
+  /** Achievements this change unlocked (empty on retries). */
+  achievements?: AchievementUnlock[];
   status: "joined" | "transferred" | "duplicate";
   membership: MembershipRecord;
   nextTransferAt: string | null;

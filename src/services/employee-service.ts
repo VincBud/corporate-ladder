@@ -14,7 +14,6 @@ const GUEST_EMPLOYEE: Employee = {
   location: "Hot desk near the printer",
   xp: 0,
   joinedOn: "2026-10-30",
-  unlockedAchievements: ["badge-activated"],
   isGuest: true,
 };
 

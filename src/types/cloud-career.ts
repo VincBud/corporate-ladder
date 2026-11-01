@@ -1,3 +1,4 @@
+import type { AchievementSummary, AchievementUnlock } from "./achievements";
 import type { DepartmentCareerSummary } from "./department-career";
 import type { GameResultRecord } from "./progression";
 
@@ -27,6 +28,8 @@ export interface CareerResponse {
   departments: { id: string; name: string }[];
   /** Membership history, transfer eligibility and department career progress. */
   departmentCareer: DepartmentCareerSummary;
+  /** Null when achievements couldn't be computed (the rest of the career still loads). */
+  achievements: { summary: AchievementSummary; newlyUnlocked: AchievementUnlock[] } | null;
 }
 
 export interface ImportResponse {

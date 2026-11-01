@@ -32,7 +32,7 @@ function fail(error: { message: string } | null) {
  * The signed-in player's career, read with their own session so Row Level
  * Security limits every query to their rows.
  */
-export async function getCareer(supabase: SupabaseClient, userId: string): Promise<CareerResponse> {
+export async function getCareer(supabase: SupabaseClient, userId: string): Promise<Omit<CareerResponse, "achievements">> {
   const [profile, results, legacy, xp, departments, memberships] = await Promise.all([
     supabase.from("profiles").select("user_id, employee_number, display_name, department_id, created_at").eq("user_id", userId).maybeSingle(),
     supabase.from("game_results").select(RESULT_COLUMNS).order("completed_at", { ascending: false }).limit(HISTORY_LIMIT),

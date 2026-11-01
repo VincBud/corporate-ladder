@@ -11,6 +11,7 @@ import { GUEST_SCOPE } from "@/performance/career-scope";
 import { getCareerStore, useActiveCareerScope } from "@/performance/use-career";
 import { api } from "@/services/api-client";
 import { notifyCompanyChanged } from "@/services/company-source";
+import { enqueueAchievementToasts } from "@/achievements/toast-queue";
 import type { StartPipelineResponse, SubmitPipelineResponse } from "@/types/pipeline-play";
 import type { AppProps } from "../types";
 import { PipelineReport, PipelineReview } from "./report";
@@ -86,7 +87,13 @@ export function PipelinePanicApp({ setCloseWarning, openApp }: AppProps) {
     api.submitPipeline(active.sessionId, active.decisions).then(
       (response) => {
         if (cancelled) return;
-        if (scope && scope !== GUEST_SCOPE) getCareerStore(scope).applyVerifiedResult(active.sessionId, response);
+        if (scope && scope !== GUEST_SCOPE) {
+          getCareerStore(scope).applyVerifiedResult(active.sessionId, response);
+          if (response.achievements?.length) {
+            enqueueAchievementToasts(response.achievements);
+            void getCareerStore(scope).load();
+          }
+        }
         if (response.contribution.recorded) {
           setContributionFor(active.sessionId);
           notifyCompanyChanged();

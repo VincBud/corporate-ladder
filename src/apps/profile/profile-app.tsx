@@ -1,24 +1,22 @@
 "use client";
 
 import { useId } from "react";
-import { CheckIcon, LockIcon } from "@/components/icons";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Panel } from "@/components/ui/panel";
 import { Switch } from "@/components/ui/switch";
-import { ACHIEVEMENTS } from "@/career/achievements";
 import { getCareerSnapshot } from "@/career/progression";
-import { cn } from "@/lib/cn";
 import { formatIsoDate, formatNumber } from "@/lib/format";
 import { useCareer } from "@/performance/use-career";
 import type { AppProps } from "../types";
+import { AchievementsPanel, AVAILABLE_ACHIEVEMENTS } from "../achievements/achievements-panel";
 import { AccountPanel } from "./account-panel";
 
 export function ProfileApp({ employee, openApp }: AppProps) {
   const { progress, rank } = getCareerSnapshot(employee.xp);
-  const unlocked = new Set(employee.unlockedAchievements);
   const id = useId();
   const career = useCareer();
+  const unlockedCount = career.achievements?.unlocked.length;
 
   const details = [
     ["Department", employee.department],
@@ -31,7 +29,7 @@ export function ProfileApp({ employee, openApp }: AppProps) {
   const stats = [
     ["Level", formatNumber(progress.level)],
     ["Corporate XP", formatNumber(progress.xp)],
-    ["Achievements", `${unlocked.size} / ${ACHIEVEMENTS.length}`],
+    ["Achievements", employee.isGuest || unlockedCount === undefined ? "—" : `${unlockedCount} / ${AVAILABLE_ACHIEVEMENTS.length}`],
     // "—" until the history has loaded, so a slow load never reads as "0 rounds".
     ["Rounds played", career.status === "ready" ? formatNumber(career.records.length) : "—"],
   ] as const;
@@ -105,38 +103,7 @@ export function ProfileApp({ employee, openApp }: AppProps) {
 
       <AccountPanel career={career} onOpenDepartments={() => openApp("departments")} />
 
-      <Panel title="Achievements" description={`${unlocked.size} of ${ACHIEVEMENTS.length} unlocked`}>
-        <ul className="grid gap-2 @lg:grid-cols-2">
-          {ACHIEVEMENTS.map((achievement) => {
-            const isUnlocked = unlocked.has(achievement.id);
-            return (
-              <li
-                key={achievement.id}
-                className={cn(
-                  "flex gap-3 rounded-lg border p-3",
-                  isUnlocked ? "border-gold/30 bg-gold-soft" : "border-line bg-white/2",
-                )}
-              >
-                <span
-                  className={cn(
-                    "grid size-8 shrink-0 place-items-center rounded-lg",
-                    isUnlocked ? "bg-gold/20 text-gold" : "bg-white/5 text-fg-subtle",
-                  )}
-                >
-                  {isUnlocked ? <CheckIcon className="size-4" /> : <LockIcon className="size-4" />}
-                </span>
-                <div className="min-w-0">
-                  <p className={cn("text-[13px] font-medium", !isUnlocked && "text-fg-muted")}>
-                    {achievement.title}
-                    <span className="sr-only">{isUnlocked ? " (unlocked)" : " (locked)"}</span>
-                  </p>
-                  <p className="text-xs text-fg-subtle">{achievement.description}</p>
-                </div>
-              </li>
-            );
-          })}
-        </ul>
-      </Panel>
+      <AchievementsPanel career={career} />
 
       <Panel title="Settings" description="Notification and visibility settings aren't available yet.">
         <div className="divide-y divide-line">

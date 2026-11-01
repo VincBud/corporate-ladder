@@ -41,17 +41,3 @@ export interface CareerSnapshot {
   nextRank: Rank | null;
   xpToNextRank: number;
 }
-
-export type AchievementId =
-  | "badge-activated"
-  | "first-win"
-  | "reply-all-survivor"
-  | "inbox-zero"
-  | "first-promotion"
-  | "synergy-achieved";
-
-export interface Achievement {
-  id: AchievementId;
-  title: string;
-  description: string;
-}

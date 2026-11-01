@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { syncAchievementsSafely } from "@/server/achievements/service";
 import { selectDepartment } from "@/server/departments/service";
 import { apiError, rateLimit, readJsonBody, requireUser, toErrorResponse } from "@/server/http";
 import { getCompanyService, getTrustedRpc } from "@/server/services";
@@ -16,7 +17,8 @@ export async function POST(request: Request) {
     const result = await selectDepartment(rpc, auth.user.id, body);
     // Workforce counts in the company snapshot change with membership.
     if (result.status !== "duplicate") getCompanyService()?.invalidate();
-    return NextResponse.json(result, { headers: { "Cache-Control": "no-store" } });
+    const achievements = await syncAchievementsSafely(rpc, auth.user.id);
+    return NextResponse.json({ ...result, achievements: achievements?.created ?? [] }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
     return toErrorResponse(error);
   }

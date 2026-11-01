@@ -18,6 +18,8 @@ import {
 import { DesktopIcons } from "./desktop-icons";
 import { Taskbar } from "./taskbar";
 import { AuthNoticeToast } from "./auth-notice-toast";
+import { AchievementToast } from "./achievement-toast";
+import { dismissAchievementToast, useNextAchievementToast } from "@/achievements/toast-queue";
 import { DepartmentPrompt, useDepartmentPromptDismissed } from "./department-prompt";
 import { PromotionToast } from "./promotion-toast";
 import { Wallpaper } from "./wallpaper";
@@ -44,6 +46,9 @@ export function Desktop({ employee: baseEmployee }: { employee: Employee }) {
   // Apps register a message when closing would lose work (e.g. an active round).
   const closeWarnings = useRef(new Map<AppId, string>());
   const [pendingClose, setPendingClose] = useState<{ appId: AppId; message: string } | null>(null);
+  // Apps with an active timed round (they registered a close warning). Achievement toasts wait for them.
+  const [busyApps, setBusyApps] = useState<ReadonlySet<AppId>>(() => new Set());
+  const nextAchievement = useNextAchievementToast();
 
   const focusedAppId = selectFocusedAppId(windowState);
   const windowsInOpenOrder = [...windowState.windows].sort((a, b) => a.openSeq - b.openSeq);
@@ -98,6 +103,13 @@ export function Desktop({ employee: baseEmployee }: { employee: Employee }) {
   function setCloseWarning(appId: AppId, message: string | null) {
     if (message) closeWarnings.current.set(appId, message);
     else closeWarnings.current.delete(appId);
+    setBusyApps((current) => {
+      if (Boolean(message) === current.has(appId)) return current;
+      const next = new Set(current);
+      if (message) next.add(appId);
+      else next.delete(appId);
+      return next;
+    });
   }
 
   function handleWindowButtonClick(appId: AppId) {
@@ -168,6 +180,9 @@ export function Desktop({ employee: baseEmployee }: { employee: Employee }) {
         })}
         {career.promotion && careerScope && (
           <PromotionToast change={career.promotion} onDismiss={() => getCareerStore(careerScope).dismissPromotion()} />
+        )}
+        {nextAchievement && busyApps.size === 0 && (
+          <AchievementToast unlock={nextAchievement} onDismiss={dismissAchievementToast} onOpen={() => openApp("profile")} />
         )}
         {showDepartmentPrompt && <DepartmentPrompt userId={promptUserId} onChoose={() => openApp("departments")} />}
         {auth.notice && (

@@ -89,13 +89,13 @@ describe("privilege allowlist", () => {
       );
       return rows.map((r) => r.name);
     };
-    const reference = ["contribution_allocations", "contribution_formulas", "departments", "game_rules"];
+    const reference = ["achievement_definitions", "contribution_allocations", "contribution_formulas", "departments", "game_rules"];
     expect(await readable("anon")).toEqual(reference);
     expect(await readable("authenticated")).toEqual(
-      [...reference, "department_memberships", "game_results", "legacy_practice_results", "profiles", "xp_ledger"].sort(),
+      [...reference, "department_memberships", "game_results", "legacy_practice_results", "player_achievements", "profiles", "xp_ledger"].sort(),
     );
     expect(await readable("service_role")).toEqual(
-      [...reference, "contribution_events", "department_memberships", "game_results", "game_sessions", "legacy_practice_results", "profiles", "xp_ledger"].sort(),
+      [...reference, "contribution_events", "department_memberships", "game_results", "game_sessions", "legacy_practice_results", "player_achievements", "profiles", "xp_ledger"].sort(),
     );
   });
 
@@ -111,10 +111,12 @@ describe("privilege allowlist", () => {
     expect(await executable("anon")).toEqual([]);
     expect(await executable("authenticated")).toEqual(["get_my_career_xp"]);
     expect(await executable("service_role")).toEqual([
+      "award_achievements",
       "backfill_contribution_events",
       "check_progression_integrity",
       "create_game_session",
       "finalize_game_session",
+      "get_achievement_facts",
       "get_company_quarter",
       "get_game_session",
       "get_my_career_xp",

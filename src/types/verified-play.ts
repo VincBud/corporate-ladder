@@ -8,6 +8,7 @@ import type { SerializedChallenge, SerializedPublicChallenge } from "@/games/spr
 import type { PerformanceGrade } from "@/games/spreadsheet-wars/reconciliation-rush/report";
 import type { ScoreBreakdown } from "@/games/spreadsheet-wars/reconciliation-rush/scoring";
 import type { PlayerEntries, RoundEvaluation } from "@/games/spreadsheet-wars/reconciliation-rush/validate";
+import type { AchievementUnlock } from "./achievements";
 import type { GameResultRecord } from "./progression";
 
 export interface StartRoundResponse {
@@ -47,6 +48,8 @@ export interface SubmitRoundResponse {
    * ledger. Only a flag: no points, allocation or ranking for the player.
    */
   contribution: { recorded: boolean };
+  /** Achievements this submission unlocked (empty on retries). */
+  achievements?: AchievementUnlock[];
   /** False when this request returned a result stored by an earlier request. */
   created: boolean;
   totalXp: number;

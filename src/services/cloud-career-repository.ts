@@ -5,6 +5,7 @@
  */
 import { CAREER_SCHEMA_VERSION } from "@/performance/schema";
 import type { CareerResponse } from "@/types/cloud-career";
+import { enqueueAchievementToasts } from "@/achievements/toast-queue";
 import { ApiError } from "./api-client";
 import type { CareerRepository, LoadResult } from "./career-repository";
 
@@ -15,6 +16,8 @@ export function createCloudCareerRepository(fetchCareer: () => Promise<CareerRes
     async load(): Promise<LoadResult> {
       try {
         const data = await fetchCareer();
+        // Unlocks the server created during this load (e.g. recovered or backfilled).
+        enqueueAchievementToasts(data.achievements?.newlyUnlocked);
         return {
           save: { version: CAREER_SCHEMA_VERSION, records: data.records },
           status: data.records.length ? "ok" : "empty",
@@ -26,6 +29,7 @@ export function createCloudCareerRepository(fetchCareer: () => Promise<CareerRes
             legacy: data.legacy,
             departments: data.departments,
             departmentCareer: data.departmentCareer,
+            achievements: data.achievements?.summary ?? null,
           },
         };
       } catch (error) {

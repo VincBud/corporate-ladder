@@ -14,6 +14,7 @@ import { GUEST_SCOPE } from "@/performance/career-scope";
 import { getCareerStore, useActiveCareerScope } from "@/performance/use-career";
 import { api } from "@/services/api-client";
 import { notifyCompanyChanged } from "@/services/company-source";
+import { enqueueAchievementToasts } from "@/achievements/toast-queue";
 import type { AppProps } from "../types";
 import { SpreadsheetWarsLobby } from "./lobby";
 import { Briefing } from "./rush/briefing";
@@ -81,7 +82,13 @@ export function SpreadsheetWarsApp({ setCloseWarning, openApp }: AppProps) {
     api.submitRound(round.sessionId, round.entries).then(
       (response) => {
         if (cancelled) return;
-        if (scope && scope !== GUEST_SCOPE) getCareerStore(scope).applyVerifiedResult(round.sessionId, response);
+        if (scope && scope !== GUEST_SCOPE) {
+          getCareerStore(scope).applyVerifiedResult(round.sessionId, response);
+          if (response.achievements?.length) {
+            enqueueAchievementToasts(response.achievements);
+            void getCareerStore(scope).load();
+          }
+        }
         if (response.contribution?.recorded) {
           setContributionFor(round.sessionId);
           notifyCompanyChanged();

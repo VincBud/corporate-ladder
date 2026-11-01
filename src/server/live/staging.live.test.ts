@@ -17,6 +17,7 @@ import { solveRound } from "@/games/pipeline-panic/solve";
 import { pipelineRoundFor } from "@/server/pipeline/rules";
 import type { PipelineHintResponse, StartPipelineResponse, SubmitPipelineResponse } from "@/types/pipeline-play";
 import { parseCompanySnapshot, type CompanySnapshot } from "@/simulation/source";
+import { ACHIEVEMENTS } from "@/career/achievements";
 import type { CareerResponse } from "@/types/cloud-career";
 import type { SelectDepartmentResponse } from "@/types/department-career";
 import type { ApiErrorBody, HintResponse, StartRoundResponse, SubmitRoundResponse } from "@/types/verified-play";
@@ -729,6 +730,109 @@ describe.skipIf(!configured || !BASE)("live: Pipeline Panic over HTTP", () => {
     expect(snapshot.formulaVersions).toContainEqual({ gameId: "pipeline-panic", formulaVersion: 1 });
     // Test accounts aren't employees; with no employees no department has a target yet.
     expect(snapshot.departments.find((d) => d.id === "sales")!.measured).toBe(snapshot.employees.registered > 0);
+    const { data } = await admin!.rpc("check_progression_integrity");
+    expect(Object.values(data as Record<string, number>).every((n) => n === 0)).toBe(true);
+  });
+});
+
+describe.skipIf(!configured || !BASE)("live: achievements", () => {
+  async function unlocks(userId: string) {
+    const { data, error } = await admin!.from("player_achievements").select("achievement_id, source_type, source_id, unlocked_at").eq("user_id", userId);
+    if (error) throw error;
+    return data;
+  }
+
+  async function playRush(user: TestUser, fixed = 5) {
+    const start = await api<StartRoundResponse>(user, "POST", "/api/rounds");
+    const { entries } = await answersFor(start.data.sessionId, user.id);
+    const submit = await api<SubmitRoundResponse>(user, "POST", `/api/rounds/${start.data.sessionId}/submit`, { entries: entries(fixed) });
+    return { sessionId: start.data.sessionId, submit };
+  }
+
+  it("publishes the registry's definitions to everyone and nothing else", async () => {
+    const anon = createClient(URL_, PUBLISHABLE, { auth: { persistSession: false } });
+    const { data } = await anon.from("achievement_definitions").select("id, category, rarity, status");
+    expect([...(data ?? [])].sort((a, b) => a.id.localeCompare(b.id))).toEqual(
+      ACHIEVEMENTS.map(({ id, category, rarity, status }) => ({ id, category, rarity, status })).sort((a, b) => a.id.localeCompare(b.id)),
+    );
+    const rows = await anon.from("player_achievements").select("*");
+    expect(rows.error !== null || (rows.data ?? []).length === 0).toBe(true);
+  });
+
+  it("unlocks from a verified round once, reports it once and keeps it after a refresh", async () => {
+    const ada = await createUser("ach-unlock");
+    const { sessionId, submit } = await playRush(ada, 5);
+    expect(submit.status).toBe(200);
+    const created = (submit.data.achievements ?? []).map((u) => u.id).sort();
+    expect(created).toContain("first-assignment");
+    expect(created).toContain("clean-audit");
+
+    const retry = await api<SubmitRoundResponse>(ada, "POST", `/api/rounds/${sessionId}/submit`, { entries: {} });
+    expect(retry.data.created).toBe(false);
+    expect(retry.data.achievements).toEqual([]);
+
+    const career = (await api<CareerResponse>(ada, "GET", "/api/career")).data;
+    expect(career.achievements?.newlyUnlocked).toEqual([]);
+    expect(career.achievements?.summary.unlocked.map((u) => u.id).sort()).toEqual(created);
+    expect(career.achievements?.summary.progress["getting-started"]).toEqual({ current: 1, target: 10 });
+    const rows = await unlocks(ada.id);
+    expect(rows.map((r) => r.achievement_id).sort()).toEqual(created);
+    expect(rows.find((r) => r.achievement_id === "first-assignment")).toMatchObject({ source_type: "game_result", source_id: sessionId });
+  });
+
+  it("awards once across truly concurrent submissions and career loads", async () => {
+    const cal = await createUser("ach-concurrent");
+    const start = await api<StartRoundResponse>(cal, "POST", "/api/rounds");
+    const { entries } = await answersFor(start.data.sessionId, cal.id);
+    const responses = await Promise.all([
+      ...Array.from({ length: 4 }, () => api<SubmitRoundResponse>(cal, "POST", `/api/rounds/${start.data.sessionId}/submit`, { entries: entries(5) })),
+      ...Array.from({ length: 3 }, () => api<CareerResponse>(cal, "GET", "/api/career")),
+    ]);
+    const reported = responses.flatMap((r) => {
+      const data = r.data as SubmitRoundResponse & CareerResponse;
+      return (data.achievements && "summary" in data.achievements ? data.achievements.newlyUnlocked : (data.achievements as SubmitRoundResponse["achievements"])) ?? [];
+    });
+    const ids = reported.map((u) => u.id);
+    expect(new Set(ids).size).toBe(ids.length);
+    expect(ids.sort()).toEqual((await unlocks(cal.id)).map((r) => r.achievement_id).sort());
+  });
+
+  it("reports department and cross-game unlocks from their own routes", async () => {
+    const eve = await createUser("ach-department");
+    const joined = await api<SelectDepartmentResponse>(eve, "POST", "/api/department", { departmentId: "sales", requestId: crypto.randomUUID() });
+    expect(joined.data.achievements?.map((u) => u.id)).toEqual(["welcome-aboard"]);
+    await playRush(eve, 2);
+    const start = await api<StartPipelineResponse>(eve, "POST", "/api/pipeline/rounds");
+    const { decisions } = await pipelineAnswers(start.data.sessionId, eve.id);
+    const pipeline = await api<SubmitPipelineResponse>(eve, "POST", `/api/pipeline/rounds/${start.data.sessionId}/submit`, { decisions });
+    expect(pipeline.data.achievements?.map((u) => u.id)).toEqual(expect.arrayContaining(["cross-functional", "sales-excellence", "deal-maker"]));
+  });
+
+  it("blocks every client write and service-role writes outside the award function", async () => {
+    const mal = await createUser("ach-forge");
+    const insert = { user_id: mal.id, achievement_id: "corporate-veteran", unlocked_at: new Date().toISOString() };
+    expect((await mal.db.from("player_achievements").insert(insert)).error?.message).toMatch(/permission denied/);
+    expect((await mal.db.rpc("award_achievements", { p_user_id: mal.id, p_awards: [{ achievement_id: "corporate-veteran" }] })).error).not.toBeNull();
+    expect((await mal.db.rpc("get_achievement_facts", { p_user_id: mal.id })).error).not.toBeNull();
+    expect((await mal.db.from("achievement_definitions").update({ status: "available" }).eq("id", "daily-grind")).error?.message).toMatch(/permission denied/);
+    expect((await admin!.from("player_achievements").insert(insert)).error?.message).toMatch(/permission denied/);
+    // A forged source from someone else's round is rejected by the award function itself.
+    const victim = await createUser("ach-victim");
+    const { sessionId } = await playRush(victim, 5);
+    const forged = await admin!.rpc("award_achievements", { p_user_id: mal.id, p_awards: [{ achievement_id: "clean-audit", source_type: "game_result", source_id: sessionId }] });
+    expect(forged.error?.message).toMatch(/invalid_achievement_award/);
+    expect(await unlocks(mal.id)).toEqual([]);
+    // Players see only their own unlocks.
+    expect((await mal.db.from("player_achievements").select("*").eq("user_id", victim.id)).data ?? []).toEqual([]);
+    expect(((await victim.db.from("player_achievements").select("achievement_id")).data ?? []).length).toBeGreaterThan(0);
+  });
+
+  it("removes achievements with the account", async () => {
+    const leaver = await createUser("ach-leaver");
+    await playRush(leaver, 5);
+    expect((await unlocks(leaver.id)).length).toBeGreaterThan(0);
+    await admin!.auth.admin.deleteUser(leaver.id);
+    expect(await unlocks(leaver.id)).toEqual([]);
     const { data } = await admin!.rpc("check_progression_integrity");
     expect(Object.values(data as Record<string, number>).every((n) => n === 0)).toBe(true);
   });

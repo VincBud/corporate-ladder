@@ -19,6 +19,7 @@ function cloudResponse(userId: string, xp: number, records = [record(`${userId}-
     legacy: [],
     departments: [{ id: "finance", name: "Finance" }],
     departmentCareer: { current: null, history: [], nextTransferAt: null, canTransferNow: true, cooldownDays: 30, progress: [], serverNow: "2026-10-30T00:00:00Z" },
+    achievements: null,
   };
 }
 

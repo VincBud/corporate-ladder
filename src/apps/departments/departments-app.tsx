@@ -16,6 +16,7 @@ import { departmentRoleFor } from "@/performance/player";
 import { getCareerStore, useActiveCareerScope, useCareer } from "@/performance/use-career";
 import { api } from "@/services/api-client";
 import { notifyCompanyChanged } from "@/services/company-source";
+import { enqueueAchievementToasts } from "@/achievements/toast-queue";
 import type { CareerState } from "@/performance/career-store";
 import type { AppProps } from "../types";
 import { useLiveCompany } from "../company/use-live-company";
@@ -71,6 +72,7 @@ export function DepartmentsApp({ openApp }: AppProps) {
     setError(null);
     try {
       const result = await api.selectDepartment(id, requestId);
+      enqueueAchievementToasts(result.achievements);
       if (scope) await getCareerStore(scope).load();
       notifyCompanyChanged();
       setView({ kind: "done", id, transferred: result.status === "transferred" || (result.status === "duplicate" && result.membership.startReason === "transfer") });

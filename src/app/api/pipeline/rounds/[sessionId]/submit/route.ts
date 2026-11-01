@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { apiError, rateLimit, readJsonBody, requireUser, toErrorResponse } from "@/server/http";
 import { assertSessionId } from "@/server/rounds/payload";
-import { getCompanyService, getPipelineService } from "@/server/services";
+import { syncAchievementsSafely } from "@/server/achievements/service";
+import { getCompanyService, getPipelineService, getTrustedRpc } from "@/server/services";
 
 /** Submits the round's decisions. The server scores them; repeats return the stored result. */
 export async function POST(request: Request, { params }: { params: Promise<{ sessionId: string }> }) {
@@ -16,7 +17,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ ses
     const body = await readJsonBody(request);
     const result = await service.submitRound(auth.user.id, sessionId, body);
     if (result.created || result.contribution.recorded) getCompanyService()?.invalidate();
-    return NextResponse.json(result, { headers: { "Cache-Control": "no-store" } });
+    const achievements = await syncAchievementsSafely(getTrustedRpc(), auth.user.id);
+    return NextResponse.json({ ...result, achievements: achievements?.created ?? [] }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
     return toErrorResponse(error);
   }

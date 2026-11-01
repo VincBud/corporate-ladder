@@ -10,6 +10,7 @@ import { describeProgressChange } from "@/career/progression";
 import type { CareerRepository, LoadResult, LoadStatus } from "@/services/career-repository";
 import type { CloudProfile, LegacyRecord } from "@/types/cloud-career";
 import type { DepartmentCareerSummary } from "@/types/department-career";
+import type { AchievementSummary } from "@/types/achievements";
 import type { SubmitRoundResponse } from "@/types/verified-play";
 import type { GameResultInput, GameResultRecord } from "@/types/progression";
 import { addResult, earnedXp } from "./ledger";
@@ -37,6 +38,8 @@ export interface CareerState {
   departments: readonly { id: string; name: string }[];
   /** Cloud only: membership history, transfer eligibility and department career progress. */
   departmentCareer: DepartmentCareerSummary | null;
+  /** Cloud only: server-computed achievements (null for guests, or if they couldn't be computed). */
+  achievements: AchievementSummary | null;
 }
 
 export interface CareerStore {
@@ -64,6 +67,7 @@ export const INITIAL_CAREER_STATE: CareerState = {
   legacyRecords: [],
   departments: [],
   departmentCareer: null,
+  achievements: null,
 };
 
 export function createCareerStore(
@@ -99,6 +103,7 @@ export function createCareerStore(
       legacyRecords: result.cloud.legacy,
       departments: result.cloud.departments,
       departmentCareer: result.cloud.departmentCareer,
+      achievements: result.cloud.achievements,
     };
   }
 
