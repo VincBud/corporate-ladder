@@ -2,6 +2,9 @@
 
 import { useEffect, useReducer, useRef, useState } from "react";
 import { APPS, getApp } from "@/apps/registry";
+import { markAppVisited, useVisitedApps } from "@/onboarding/checklist";
+import { rememberOrientation, shouldAutoShowOrientation, useOrientationMemory } from "@/onboarding/orientation";
+import { requestLaunchIntent } from "../launch-intent";
 import { BRAND } from "@/config/brand";
 import type { AppId } from "@/types/app";
 import { getAuthStore, useAuth } from "@/auth/use-auth";
@@ -21,6 +24,7 @@ import { AuthNoticeToast } from "./auth-notice-toast";
 import { AchievementToast } from "./achievement-toast";
 import { dismissAchievementToast, useNextAchievementToast } from "@/achievements/toast-queue";
 import { DepartmentPrompt, useDepartmentPromptDismissed } from "./department-prompt";
+import { Orientation } from "./orientation";
 import { PromotionToast } from "./promotion-toast";
 import { Wallpaper } from "./wallpaper";
 import { AnnouncementWidget } from "./widgets/announcement-widget";
@@ -30,6 +34,7 @@ import { ProductivityWidget } from "./widgets/productivity-widget";
 import { WindowFrame } from "./window-frame";
 
 const FALLBACK_BOUNDS: Size = { width: 1280, height: 720 };
+const GAME_APPS: readonly AppId[] = ["spreadsheet-wars", "pipeline-panic", "daily"];
 
 export function Desktop({ employee: baseEmployee }: { employee: Employee }) {
   // One player state for every app: the guest (local XP) or the signed-in
@@ -41,7 +46,8 @@ export function Desktop({ employee: baseEmployee }: { employee: Employee }) {
   const [windowState, dispatch] = useReducer(windowManagerReducer, initialWindowManagerState);
   const [launcherOpen, setLauncherOpen] = useState(false);
   const [selectedIcon, setSelectedIcon] = useState<AppId | null>(null);
-  const [visitedAppIds, setVisitedAppIds] = useState<ReadonlySet<AppId>>(() => new Set());
+  // Apps opened in this browser (for the onboarding checklist).
+  const visitedAppIds = useVisitedApps();
   const workspaceRef = useRef<HTMLElement>(null);
   // Apps register a message when closing would lose work (e.g. an active round).
   const closeWarnings = useRef(new Map<AppId, string>());
@@ -49,14 +55,46 @@ export function Desktop({ employee: baseEmployee }: { employee: Employee }) {
   // Apps with an active timed round (they registered a close warning). Achievement toasts wait for them.
   const [busyApps, setBusyApps] = useState<ReadonlySet<AppId>>(() => new Set());
   const nextAchievement = useNextAchievementToast();
+  const busy = busyApps.size > 0;
+
+  // Employee Orientation: opens by itself once, for players without prior progress.
+  const orientationMemory = useOrientationMemory();
+  // "undecided" until auth and career are known; decided once per page view,
+  // so signing in later never restarts it.
+  const [orientation, setOrientation] = useState<"undecided" | "open" | "closed">("undecided");
+  // Whether the player closed a game window this visit ("after their first assignment").
+  const [leftGame, setLeftGame] = useState(false);
 
   const focusedAppId = selectFocusedAppId(windowState);
   const windowsInOpenOrder = [...windowState.windows].sort((a, b) => a.openSeq - b.openSeq);
   // Signed-in employees without a department get an optional, dismissible invitation.
   const promptUserId = auth.status === "signedIn" && career.departmentCareer && !career.departmentCareer.current ? (auth.user?.id ?? "") : "";
   const promptDismissed = useDepartmentPromptDismissed(promptUserId);
+  // It waits for the orientation and for the first assignment, and never covers a running round.
   const showDepartmentPrompt =
-    promptUserId !== "" && promptDismissed === false && !windowState.windows.some((w) => w.appId === "departments");
+    promptUserId !== "" &&
+    promptDismissed === false &&
+    orientation !== "open" &&
+    !busy &&
+    (career.records.length > 0 || leftGame) &&
+    !windowState.windows.some((w) => w.appId === "departments");
+
+  const progressKnown = auth.status !== "loading" && career.status === "ready";
+  if (orientation === "undecided" && progressKnown && orientationMemory !== null) {
+    const show = shouldAutoShowOrientation({
+      memory: orientationMemory,
+      ready: true,
+      busy,
+      progress: {
+        records: career.records.length,
+        legacyRecords: career.legacyRecords.length,
+        xp: employee.xp,
+        hasDepartment: Boolean(career.departmentCareer?.current),
+      },
+    });
+    setOrientation(show ? "open" : "closed");
+  }
+  const orientationOpen = orientation === "open";
 
   // Move keyboard focus into whichever window becomes active.
   useEffect(() => {
@@ -85,10 +123,27 @@ export function Desktop({ employee: baseEmployee }: { employee: Employee }) {
     const bounds = workspace ? { width: workspace.clientWidth, height: workspace.clientHeight } : FALLBACK_BOUNDS;
     dispatch({ type: "open", appId, sizing: getApp(appId).window, bounds });
     setLauncherOpen(false);
-    setVisitedAppIds((previous) => (previous.has(appId) ? previous : new Set(previous).add(appId)));
+    markAppVisited(appId);
+  }
+
+  function openOrientation() {
+    if (busy) return; // never over a running round
+    setLauncherOpen(false);
+    setOrientation("open");
+  }
+
+  function finishOrientation(outcome: "completed" | "dismissed") {
+    rememberOrientation(outcome);
+    setOrientation("closed");
+    if (outcome === "completed") {
+      // Opens at the existing briefing; nothing starts until the player presses Start.
+      requestLaunchIntent("spreadsheet-wars", "briefing");
+      openApp("spreadsheet-wars");
+    }
   }
 
   function closeWindow(appId: AppId) {
+    if (GAME_APPS.includes(appId)) setLeftGame(true);
     closeWarnings.current.delete(appId);
     setPendingClose(null);
     dispatch({ type: "close", appId });
@@ -138,7 +193,13 @@ export function Desktop({ employee: baseEmployee }: { employee: Employee }) {
         {/* Widget rail (large screens). Lower-priority widgets drop out on short viewports. */}
         <div className="absolute top-4 right-4 hidden w-72 flex-col gap-3 lg:flex">
           <MeetingWidget />
-          <OnboardingWidget visitedAppIds={visitedAppIds} onOpenApp={openApp} />
+          <OnboardingWidget
+            visitedAppIds={visitedAppIds}
+            records={career.records.length}
+            hasDepartment={Boolean(career.departmentCareer?.current)}
+            onOpenApp={openApp}
+            onOpenOrientation={busy ? null : openOrientation}
+          />
           <AnnouncementWidget className="[@media(max-height:719px)]:hidden" />
           <ProductivityWidget className="[@media(max-height:839px)]:hidden" />
         </div>
@@ -178,14 +239,21 @@ export function Desktop({ employee: baseEmployee }: { employee: Employee }) {
             </WindowFrame>
           );
         })}
-        {career.promotion && careerScope && (
+        {career.promotion && careerScope && !orientationOpen && (
           <PromotionToast change={career.promotion} onDismiss={() => getCareerStore(careerScope).dismissPromotion()} />
         )}
-        {nextAchievement && busyApps.size === 0 && (
+        {nextAchievement && !busy && !orientationOpen && (
           <AchievementToast unlock={nextAchievement} onDismiss={dismissAchievementToast} onOpen={() => openApp("profile")} />
         )}
         {showDepartmentPrompt && <DepartmentPrompt userId={promptUserId} onChoose={() => openApp("departments")} />}
-        {auth.notice && (
+        {orientationOpen && (
+          <Orientation
+            signedIn={auth.status === "signedIn"}
+            onComplete={() => finishOrientation("completed")}
+            onDismiss={() => finishOrientation("dismissed")}
+          />
+        )}
+        {auth.notice && !orientationOpen && (
           <AuthNoticeToast notice={auth.notice} onOpenProfile={() => openApp("profile")} onDismiss={() => getAuthStore().dismissNotice()} />
         )}
       </main>
@@ -198,6 +266,7 @@ export function Desktop({ employee: baseEmployee }: { employee: Employee }) {
         onLauncherOpenChange={setLauncherOpen}
         onWindowButtonClick={handleWindowButtonClick}
         onOpenApp={openApp}
+        onOpenOrientation={busy ? null : openOrientation}
       />
     </div>
   );

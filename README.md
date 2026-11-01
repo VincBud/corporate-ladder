@@ -102,6 +102,10 @@ The second verified minigame, for Sales: triage an end-of-quarter pipeline of 8â
 
 Employees join one of nine departments in the **Departments** app, get a job title from that department's career track, and can transfer after 30 days. Department careers are separate from Corporate XP and never affect company contribution. See [docs/careers.md](docs/careers.md).
 
+## Employee Orientation
+
+First-time visitors get a three-screen, skippable welcome ("You've been hired. Somehow.") that ends by opening Reconciliation Rush at its briefing; nothing starts until the player presses Start. It opens by itself once per browser, only for players without prior progress and never over a running round, and can be replayed from the launcher (People & Culture â†’ Employee Orientation). The desktop checklist tracks real milestones: first assignment, career, department, Company dashboard. Signed-in employees without a department are offered one after their first assignment. Client-side only: `src/onboarding/`, `src/desktop/components/orientation.tsx`.
+
 ## Daily Challenges
 
 The **Daily Assignments** app offers two shared challenges per UTC day: Daily Audit (Reconciliation Rush) and Daily Sales Briefing (Pipeline Panic). Everyone gets the same puzzle, with one ranked, server-verified attempt each. Optional, no streaks; practice stays unlimited. See [docs/daily-challenges.md](docs/daily-challenges.md).

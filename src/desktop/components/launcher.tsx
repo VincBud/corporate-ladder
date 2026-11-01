@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, type RefObject } from "react";
 import { AppIcon } from "@/apps/app-icon";
 import type { AppDefinition } from "@/apps/types";
-import { PowerIcon, SearchIcon } from "@/components/icons";
+import { InfoIcon, PowerIcon, SearchIcon } from "@/components/icons";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { getCareerSnapshot } from "@/career/progression";
@@ -22,10 +22,12 @@ interface LauncherProps {
   /** Receives focus when the launcher is dismissed with Escape. */
   returnFocusRef: RefObject<HTMLElement | null>;
   onLaunch: (appId: AppId) => void;
+  /** Null while a round is running (the orientation never covers one). */
+  onOpenOrientation: (() => void) | null;
   onClose: () => void;
 }
 
-export function Launcher({ id, apps, employee, triggerRef, returnFocusRef, onLaunch, onClose }: LauncherProps) {
+export function Launcher({ id, apps, employee, triggerRef, returnFocusRef, onLaunch, onOpenOrientation, onClose }: LauncherProps) {
   const panelRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const [query, setQuery] = useState("");
@@ -100,6 +102,23 @@ export function Launcher({ id, apps, employee, triggerRef, returnFocusRef, onLau
 
         {!normalizedQuery && (
           <>
+            <p className="px-2 pt-4 pb-1.5 text-[11px] font-medium tracking-wider text-fg-subtle uppercase">People &amp; Culture</p>
+            <button
+              type="button"
+              onClick={() => onOpenOrientation?.()}
+              disabled={!onOpenOrientation}
+              className="flex w-full items-center gap-3 rounded-lg px-2 py-2 text-left transition-colors enabled:hover:bg-white/6 disabled:opacity-50"
+            >
+              <span aria-hidden="true" className="grid size-8 shrink-0 place-items-center rounded-lg bg-white/6 text-fg-muted ring-1 ring-line ring-inset">
+                <InfoIcon className="size-4" />
+              </span>
+              <span className="min-w-0">
+                <span className="block text-[13px] font-medium">Employee Orientation</span>
+                <span className="block truncate text-xs text-fg-subtle">
+                  {onOpenOrientation ? "The 60-second welcome. Attendance optional." : "Available after your current round."}
+                </span>
+              </span>
+            </button>
             <p className="px-2 pt-4 pb-1.5 text-[11px] font-medium tracking-wider text-fg-subtle uppercase">Coming later</p>
             <ul>
               {PLANNED_APPS.map((title) => (

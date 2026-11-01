@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useReducer, useState } from "react";
+import { useEffect, useEffectEvent, useReducer, useState } from "react";
 import { useAuth } from "@/auth/use-auth";
 import { createSeed } from "@/games/spreadsheet-wars/reconciliation-rush/generate";
 import {
@@ -15,6 +15,7 @@ import { getCareerStore, useActiveCareerScope } from "@/performance/use-career";
 import { api } from "@/services/api-client";
 import { notifyCompanyChanged } from "@/services/company-source";
 import { enqueueAchievementToasts } from "@/achievements/toast-queue";
+import { onLaunchIntent, takeLaunchIntent } from "@/desktop/launch-intent";
 import type { AppProps } from "../types";
 import { SpreadsheetWarsLobby } from "./lobby";
 import { Briefing } from "./rush/briefing";
@@ -51,6 +52,18 @@ export function SpreadsheetWarsApp({ setCloseWarning, openApp }: AppProps) {
   // Signed-in players play verified rounds; guests play local practice.
   const verifiedPlay = auth.status === "signedIn";
   const newRound = () => act(verifiedPlay ? { type: "openVerifiedBriefing" } : { type: "openBriefing", seed: createSeed() });
+
+  // "Play your first assignment" (orientation): open the briefing, never a running round.
+  const openBriefingFromIntent = useEffectEvent(() => {
+    takeLaunchIntent("spreadsheet-wars");
+    if (state.phase !== "playing" && state.phase !== "submitting") newRound();
+  });
+  const authKnown = auth.status !== "loading";
+  useEffect(() => {
+    // Wait until guest vs. verified is known; the intent stays pending until then.
+    if (!authKnown) return;
+    return onLaunchIntent("spreadsheet-wars", () => openBriefingFromIntent());
+  }, [authKnown]);
 
   async function startVerifiedRound() {
     act({ type: "verifiedStartRequested" });

@@ -24,6 +24,8 @@ interface TaskbarProps {
   onLauncherOpenChange: (open: boolean) => void;
   onWindowButtonClick: (appId: AppId) => void;
   onOpenApp: (appId: AppId) => void;
+  /** Reopens the Employee Orientation; null while a round is running. */
+  onOpenOrientation: (() => void) | null;
 }
 
 export function Taskbar({
@@ -34,6 +36,7 @@ export function Taskbar({
   onLauncherOpenChange,
   onWindowButtonClick,
   onOpenApp,
+  onOpenOrientation,
 }: TaskbarProps) {
   const triggersRef = useRef<HTMLDivElement>(null);
   const startButtonRef = useRef<HTMLButtonElement>(null);
@@ -109,6 +112,7 @@ export function Taskbar({
           triggerRef={triggersRef}
           returnFocusRef={startButtonRef}
           onLaunch={onOpenApp}
+          onOpenOrientation={onOpenOrientation}
           onClose={() => onLauncherOpenChange(false)}
         />
       )}

@@ -72,6 +72,15 @@ export function FunnelIcon(props: IconProps) {
   );
 }
 
+export function GamepadIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M7.5 7.5h9a4.5 4.5 0 0 1 4.36 5.6l-.86 3.43a2.3 2.3 0 0 1-3.93 1.02L14 15.5h-4l-2.07 2.05A2.3 2.3 0 0 1 4 16.53l-.86-3.43A4.5 4.5 0 0 1 7.5 7.5Z" />
+      <path d="M8 10.5v3M6.5 12h3M15.5 11.25h.01M17.25 13h.01" />
+    </Icon>
+  );
+}
+
 export function CalendarIcon(props: IconProps) {
   return (
     <Icon {...props}>
