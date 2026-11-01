@@ -21,6 +21,7 @@ interface FactsPayload {
   results: Omit<ResultRow, "submission">[];
   memberships: { id: string; department_id: string; started_at: string; ended_at: string | null; start_reason: "initial" | "transfer" | "legacy" }[];
   contributions: { session_id: string; period_id: string; completed_at: string }[];
+  dailies?: { session_id: string; challenge_id: string; challenge_date: string; completion: "submitted" | "timedOut"; completed_at: string }[];
   unlocked: { achievement_id: string; unlocked_at: string }[];
 }
 
@@ -38,6 +39,13 @@ export function factsFromPayload(payload: FactsPayload): AchievementFacts {
       startReason: m.start_reason,
     })),
     contributions: payload.contributions.map((c) => ({ sessionId: c.session_id, periodId: c.period_id, completedAt: parseDbTimestamp(c.completed_at) })),
+    dailies: (payload.dailies ?? []).map((d) => ({
+      sessionId: d.session_id,
+      challengeId: d.challenge_id,
+      challengeDate: String(d.challenge_date).slice(0, 10),
+      completion: d.completion,
+      completedAt: parseDbTimestamp(d.completed_at),
+    })),
   };
 }
 

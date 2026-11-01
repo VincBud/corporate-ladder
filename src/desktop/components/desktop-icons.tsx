@@ -18,7 +18,8 @@ export function DesktopIcons({ apps, selectedId, onSelect, onOpen }: DesktopIcon
     <div
       role="group"
       aria-label="Desktop shortcuts"
-      className="absolute inset-x-0 top-0 grid grid-cols-4 gap-1 p-3 md:right-auto md:grid-cols-1 md:p-4"
+      // Wide screens: one column, wrapping into a second only on short viewports.
+      className="absolute inset-x-0 top-0 grid grid-cols-4 gap-1 p-3 md:right-auto md:bottom-0 md:flex md:flex-col md:flex-wrap md:content-start md:p-4"
     >
       {apps.map((app) => (
         <DesktopIcon

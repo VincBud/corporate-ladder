@@ -102,10 +102,14 @@ The second verified minigame, for Sales: triage an end-of-quarter pipeline of 8â
 
 Employees join one of nine departments in the **Departments** app, get a job title from that department's career track, and can transfer after 30 days. Department careers are separate from Corporate XP and never affect company contribution. See [docs/careers.md](docs/careers.md).
 
+## Daily Challenges
+
+The **Daily Assignments** app offers two shared challenges per UTC day: Daily Audit (Reconciliation Rush) and Daily Sales Briefing (Pipeline Panic). Everyone gets the same puzzle, with one ranked, server-verified attempt each. Optional, no streaks; practice stays unlimited. See [docs/daily-challenges.md](docs/daily-challenges.md).
+
 ## Achievements
 
-Signed-in players unlock 17 achievements across gameplay, career, department and company participation, computed on the server from verified rounds, memberships and contribution events, each awarded exactly once. The Employee Profile lists them with progress and filters; Corporate Career shows the latest; a toast announces new ones after the round. See [docs/achievements.md](docs/achievements.md).
+Signed-in players unlock 18 achievements across gameplay, career, department and company participation, computed on the server from verified rounds, memberships and contribution events, each awarded exactly once. The Employee Profile lists them with progress and filters; Corporate Career shows the latest; a toast announces new ones after the round. See [docs/achievements.md](docs/achievements.md).
 
 ## Status
 
-LadderOS desktop shell with seven applications. Reconciliation Rush and Pipeline Panic are playable: guests are scored in the browser, and signed-in players get server-verified rounds and XP (see [docs/backend.md](docs/backend.md)). Verified rounds are recorded as append-only company contribution events, and the Company app's Live view shows the shared company computed from them (fictional CorpBucks, aggregate-only). The Simulation preview tab keeps the demo scenarios. Leaderboard data is fictional and labeled as such.
+LadderOS desktop shell with eight applications. Reconciliation Rush and Pipeline Panic are playable: guests are scored in the browser, and signed-in players get server-verified rounds and XP (see [docs/backend.md](docs/backend.md)). Verified rounds are recorded as append-only company contribution events, and the Company app's Live view shows the shared company computed from them (fictional CorpBucks, aggregate-only). The Simulation preview tab keeps the demo scenarios. Leaderboard data is fictional and labeled as such.

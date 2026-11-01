@@ -9,6 +9,7 @@ import type { PerformanceGrade } from "@/games/spreadsheet-wars/reconciliation-r
 import type { ScoreBreakdown } from "@/games/spreadsheet-wars/reconciliation-rush/scoring";
 import type { PlayerEntries, RoundEvaluation } from "@/games/spreadsheet-wars/reconciliation-rush/validate";
 import type { AchievementUnlock } from "./achievements";
+import type { DailyRoundLink } from "./daily";
 import type { GameResultRecord } from "./progression";
 
 export interface StartRoundResponse {
@@ -53,7 +54,13 @@ export interface SubmitRoundResponse {
   /** False when this request returned a result stored by an earlier request. */
   created: boolean;
   totalXp: number;
-  review: VerifiedRoundReview;
+  /**
+   * Null for ranked Daily Challenge rounds: the puzzle is shared, so answers
+   * stay sealed (see docs/daily-challenges.md).
+   */
+  review: VerifiedRoundReview | null;
+  /** Set for ranked Daily Challenge rounds. */
+  daily?: DailyRoundLink;
 }
 
 export interface ApiErrorBody {

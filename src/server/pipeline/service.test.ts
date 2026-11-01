@@ -84,8 +84,8 @@ describe("submitting", () => {
     expect(result.created).toBe(true);
     expect(result.record).toMatchObject({ gameId: "pipeline-panic", department: "Sales", errorsFixed: round.opportunities.length, totalErrors: round.opportunities.length, incorrectCorrections: 0, completion: "submitted" });
     expect(result.record.xpAwarded).toBe(xpForScore(result.record.score));
-    expect(result.review.score.total).toBe(result.record.score);
-    expect(result.review.score.timeBonus).toBeGreaterThan(150);
+    expect(result.review!.score.total).toBe(result.record.score);
+    expect(result.review!.score.timeBonus).toBeGreaterThan(150);
     expect(result.contribution).toEqual({ recorded: true });
     expect(await counts(player)).toEqual({ results: 1, xp: 1, events: 1 });
     const { rows } = await t.admin.query("select game_id, formula_version, objectives_completed, objectives_total, mistakes from public.contribution_events where user_id = $1", [player]);
@@ -101,7 +101,7 @@ describe("submitting", () => {
     const evaluation = evaluatePipeline(round, decisions);
     const expected = scorePipeline(round, evaluation, result.record.timeRemainingMs, 90_000);
     expect(result.record.score).toBe(expected.total);
-    expect(result.review.decisions).toEqual(decisions);
+    expect(result.review!.decisions).toEqual(decisions);
   });
 
   it("returns a review that hides every answer the player didn't attempt", async () => {
@@ -115,20 +115,20 @@ describe("submitting", () => {
     const full = evaluatePipeline(round, decisions);
     for (const o of full.outcomes.filter((x) => x.kind === "undecided")) {
       expect(json).not.toContain(o.explanation);
-      expect(result.review.outcomes.find((r) => r.id === o.id)).toEqual({ id: o.id, decision: null, kind: "undecided" });
+      expect(result.review!.outcomes.find((r) => r.id === o.id)).toEqual({ id: o.id, decision: null, kind: "undecided" });
     }
-    for (const id of attempted) expect(result.review.outcomes.find((r) => r.id === id)).toMatchObject({ kind: "correct", bestDecision: all[id] });
+    for (const id of attempted) expect(result.review!.outcomes.find((r) => r.id === id)).toMatchObject({ kind: "correct", bestDecision: all[id] });
     expect(json).not.toContain(round.seed);
     expect(result.record.seed).toMatch(/^ref-[0-9a-f]{24}$/);
-    expect(JSON.stringify(result.review)).not.toMatch(/"scenarios"|"resolution"|"difficulty"/);
+    expect(JSON.stringify(result.review!)).not.toMatch(/"scenarios"|"resolution"|"difficulty"/);
     // Scoring, XP and the stored result are unaffected by redaction.
     const expected = scorePipeline(round, full, result.record.timeRemainingMs, 90_000);
     expect(result.record.score).toBe(expected.total);
-    expect(result.review.score).toEqual(expected);
+    expect(result.review!.score).toEqual(expected);
     expect(result.record.xpAwarded).toBe(xpForScore(expected.total));
     expect(result.record).toMatchObject({ errorsFixed: 4, totalErrors: round.opportunities.length, incorrectCorrections: 0 });
     // A retry returns the same redacted review.
-    expect((await service.submitRound(player, response.sessionId, {})).review).toEqual(result.review);
+    expect((await service.submitRound(player, response.sessionId, {})).review).toEqual(result.review!);
   });
 
   it("ignores self-reported scores, times, XP and outcomes", async () => {
@@ -193,7 +193,7 @@ describe("deadlines (database time)", () => {
     await age(response.sessionId, 91_500);
     const result = await service.submitRound(player, response.sessionId, { decisions: answers(round) });
     expect(result.record).toMatchObject({ completion: "timedOut", errorsFixed: round.opportunities.length, timeRemainingMs: 0 });
-    expect(result.review.score.timeBonus).toBe(0);
+    expect(result.review!.score.timeBonus).toBe(0);
   });
 
   it("ignores decisions sent after the tolerance", async () => {
@@ -215,8 +215,8 @@ describe("Request Assistance", () => {
     expect(again.hint).toEqual(first.hint);
     const result = await service.submitRound(player, response.sessionId, { decisions: answers(round) });
     expect(result.record.assistanceUsed).toBe(true);
-    expect(result.review.hint?.message).toBe(first.hint.message);
-    expect(result.review.score.total).toBe(result.review.score.maxPossible - (200 - result.review.score.timeBonus));
+    expect(result.review!.hint?.message).toBe(first.hint.message);
+    expect(result.review!.score.total).toBe(result.review!.score.maxPossible - (200 - result.review!.score.timeBonus));
     const { rows } = await t.admin.query("select assisted from public.contribution_events where session_id = $1", [response.sessionId]);
     expect(rows[0]).toEqual({ assisted: true });
 

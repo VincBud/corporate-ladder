@@ -23,7 +23,7 @@ const SUBMITTING_WARNING = "Your round is being verified. Closing now may hide t
 
 const messageOf = (error: unknown) => (error instanceof Error ? error.message : "Something went wrong.");
 
-function toActive(response: StartPipelineResponse, now: number): ActivePipelineRound {
+export function toActive(response: StartPipelineResponse, now: number): ActivePipelineRound {
   // The countdown follows server time: subtract the time that already passed on the server.
   const elapsed = Math.max(0, Date.parse(response.serverNow) - Date.parse(response.startedAt));
   return {
@@ -41,6 +41,8 @@ function toActive(response: StartPipelineResponse, now: number): ActivePipelineR
 
 function toFinished(sessionId: string, response: SubmitPipelineResponse): FinishedPipelineRound {
   const { review } = response;
+  // Practice rounds always carry a review; only ranked daily rounds (played in Daily Assignments) don't.
+  if (!review) throw new Error("This round's review is sealed.");
   return { mode: "verified", sessionId, localSeed: null, ...review };
 }
 

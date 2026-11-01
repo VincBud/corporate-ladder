@@ -30,7 +30,7 @@ function round(overrides: Partial<GameResultRecord> = {}): GameResultRecord {
   };
 }
 const at = (day: number, extra = 0) => new Date(Date.UTC(2026, 10, day, 10, 0, extra)).toISOString();
-const facts = (overrides: Partial<AchievementFacts> = {}): AchievementFacts => ({ results: [], memberships: [], contributions: [], ...overrides });
+const facts = (overrides: Partial<AchievementFacts> = {}): AchievementFacts => ({ results: [], memberships: [], contributions: [], dailies: [], ...overrides });
 const evaluate = (f: AchievementFacts) => Object.fromEntries(evaluateAchievements(f).map((e) => [e.id, e])) as Record<AchievementId, ReturnType<typeof evaluateAchievements>[number]>;
 const unlockedIds = (f: AchievementFacts) => evaluateAchievements(f).filter((e) => e.unlocked).map((e) => e.id).sort();
 

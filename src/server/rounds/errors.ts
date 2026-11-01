@@ -9,7 +9,10 @@ export type RoundErrorCode =
   | "unknown_player"
   | "unknown_department"
   | "already_member"
-  | "transfer_cooldown";
+  | "transfer_cooldown"
+  | "daily_in_progress"
+  | "daily_attempt_used"
+  | "unknown_daily_challenge";
 
 const STATUS: Record<RoundErrorCode, number> = {
   invalid_payload: 400,
@@ -22,6 +25,9 @@ const STATUS: Record<RoundErrorCode, number> = {
   unknown_department: 400,
   already_member: 409,
   transfer_cooldown: 409,
+  daily_in_progress: 409,
+  daily_attempt_used: 409,
+  unknown_daily_challenge: 404,
 };
 
 const MESSAGES: Record<RoundErrorCode, string> = {
@@ -35,6 +41,9 @@ const MESSAGES: Record<RoundErrorCode, string> = {
   unknown_department: "That department doesn't exist.",
   already_member: "You already work in that department.",
   transfer_cooldown: "Transfers are possible 30 days after joining your current department.",
+  daily_in_progress: "Your ranked Daily Challenge round is still running. Finish it in Daily Assignments, or wait for its timer to end.",
+  daily_attempt_used: "You've already used today's ranked attempt for this challenge. A new one opens at 00:00 UTC.",
+  unknown_daily_challenge: "That Daily Challenge isn't available.",
 };
 
 export class RoundError extends Error {
@@ -61,6 +70,8 @@ export function fromDatabaseError(message: string): RoundError | null {
     already_member: "already_member",
     transfer_cooldown: "transfer_cooldown",
     invalid_request: "invalid_payload",
+    daily_in_progress: "daily_in_progress",
+    unknown_daily_challenge: "unknown_daily_challenge",
   };
   for (const [needle, code] of Object.entries(known)) {
     if (message.includes(needle)) return new RoundError(code);

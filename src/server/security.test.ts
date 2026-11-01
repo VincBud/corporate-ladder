@@ -89,13 +89,14 @@ describe("privilege allowlist", () => {
       );
       return rows.map((r) => r.name);
     };
-    const reference = ["achievement_definitions", "contribution_allocations", "contribution_formulas", "departments", "game_rules"];
+    const reference = ["achievement_definitions", "contribution_allocations", "contribution_formulas", "daily_assignments", "departments", "game_rules"];
     expect(await readable("anon")).toEqual(reference);
     expect(await readable("authenticated")).toEqual(
-      [...reference, "department_memberships", "game_results", "legacy_practice_results", "player_achievements", "profiles", "xp_ledger"].sort(),
+      [...reference, "daily_challenge_attempts", "department_memberships", "game_results", "legacy_practice_results", "player_achievements", "profiles", "xp_ledger"].sort(),
     );
     expect(await readable("service_role")).toEqual(
-      [...reference, "contribution_events", "department_memberships", "game_results", "game_sessions", "legacy_practice_results", "player_achievements", "profiles", "xp_ledger"].sort(),
+      // Never daily_challenges: its seeds are read only through get_game_session.
+      [...reference, "contribution_events", "daily_challenge_attempts", "department_memberships", "game_results", "game_sessions", "legacy_practice_results", "player_achievements", "profiles", "xp_ledger"].sort(),
     );
   });
 
@@ -117,12 +118,16 @@ describe("privilege allowlist", () => {
       "create_game_session",
       "finalize_game_session",
       "get_achievement_facts",
+      "get_active_daily_session",
       "get_company_quarter",
+      "get_daily_leaderboard",
+      "get_daily_status",
       "get_game_session",
       "get_my_career_xp",
       "import_legacy_results",
       "record_game_hint",
       "select_department",
+      "start_daily_attempt",
       "utc_quarter",
     ]);
   });

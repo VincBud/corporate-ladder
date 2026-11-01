@@ -19,6 +19,7 @@ import type { PipelineHintResponse, StartPipelineResponse, SubmitPipelineRespons
 import { parseCompanySnapshot, type CompanySnapshot } from "@/simulation/source";
 import { ACHIEVEMENTS } from "@/career/achievements";
 import type { CareerResponse } from "@/types/cloud-career";
+import type { DailyOverview, DailyStartResponse } from "@/types/daily";
 import type { SelectDepartmentResponse } from "@/types/department-career";
 import type { ApiErrorBody, HintResponse, StartRoundResponse, SubmitRoundResponse } from "@/types/verified-play";
 
@@ -89,7 +90,8 @@ async function api<T>(user: TestUser | null, method: string, path: string, body?
 async function answersFor(sessionId: string, userId: string) {
   const { data, error } = await admin!.rpc("get_game_session", { p_session_id: sessionId, p_user_id: userId });
   if (error) throw error;
-  const challenge = challengeFor(data.rules_version, data.seed);
+  // puzzle_seed: the shared daily seed for daily rounds, otherwise the session seed.
+  const challenge = challengeFor(data.rules_version, data.puzzle_seed ?? data.seed);
   return {
     challenge,
     entries: (count = 5) =>
@@ -252,7 +254,7 @@ describe.skipIf(!configured || !BASE)("live: verified rounds over HTTP", () => {
     await shiftClock(close.data.sessionId, 91_000);
     const closeResult = await api<SubmitRoundResponse>(bob, "POST", `/api/rounds/${close.data.sessionId}/submit`, { entries: closeAnswers.entries() });
     expect(closeResult.data.record).toMatchObject({ completion: "timedOut", errorsFixed: 5, timeRemainingMs: 0 });
-    expect(closeResult.data.review.score.timeBonus).toBe(0);
+    expect(closeResult.data.review!.score.timeBonus).toBe(0);
   });
 
   it("abandons an unfinished round when a new one starts", async () => {
@@ -628,7 +630,7 @@ describe.skipIf(!configured || !BASE)("live: departments over HTTP", () => {
 async function pipelineAnswers(sessionId: string, userId: string) {
   const { data, error } = await admin!.rpc("get_game_session", { p_session_id: sessionId, p_user_id: userId });
   if (error) throw error;
-  const round = pipelineRoundFor(data.rules_version, data.seed);
+  const round = pipelineRoundFor(data.rules_version, data.puzzle_seed ?? data.seed);
   return { round, decisions: Object.fromEntries(Object.entries(solveRound(round)).map(([id, r]) => [id, r.decision])) };
 }
 
@@ -670,10 +672,10 @@ describe.skipIf(!configured || !BASE)("live: Pipeline Panic over HTTP", () => {
     const text = await response.text();
     const body = JSON.parse(text) as SubmitPipelineResponse;
     expect(text).not.toContain(round.seed);
-    expect(JSON.stringify(body.review)).not.toMatch(/"scenarios"|"resolution"|"difficulty"/);
+    expect(JSON.stringify(body.review!)).not.toMatch(/"scenarios"|"resolution"|"difficulty"/);
     const career = await api(rep, "GET", "/api/career");
     expect(JSON.stringify(career.data)).not.toContain(round.seed);
-    const hidden = body.review.outcomes.filter((o) => o.kind === "undecided");
+    const hidden = body.review!.outcomes.filter((o) => o.kind === "undecided");
     expect(hidden).toHaveLength(round.opportunities.length - 2);
     for (const o of hidden) expect(Object.keys(o).sort()).toEqual(["decision", "id", "kind"]);
     expect(body.record.xpAwarded).toBe(xpForScore(body.record.score));
@@ -814,7 +816,7 @@ describe.skipIf(!configured || !BASE)("live: achievements", () => {
     expect((await mal.db.from("player_achievements").insert(insert)).error?.message).toMatch(/permission denied/);
     expect((await mal.db.rpc("award_achievements", { p_user_id: mal.id, p_awards: [{ achievement_id: "corporate-veteran" }] })).error).not.toBeNull();
     expect((await mal.db.rpc("get_achievement_facts", { p_user_id: mal.id })).error).not.toBeNull();
-    expect((await mal.db.from("achievement_definitions").update({ status: "available" }).eq("id", "daily-grind")).error?.message).toMatch(/permission denied/);
+    expect((await mal.db.from("achievement_definitions").update({ status: "available" }).eq("id", "perfect-quarter")).error?.message).toMatch(/permission denied/);
     expect((await admin!.from("player_achievements").insert(insert)).error?.message).toMatch(/permission denied/);
     // A forged source from someone else's round is rejected by the award function itself.
     const victim = await createUser("ach-victim");
@@ -835,5 +837,139 @@ describe.skipIf(!configured || !BASE)("live: achievements", () => {
     expect(await unlocks(leaver.id)).toEqual([]);
     const { data } = await admin!.rpc("check_progression_integrity");
     expect(Object.values(data as Record<string, number>).every((n) => n === 0)).toBe(true);
+  });
+});
+
+describe.skipIf(!configured || !BASE)("live: daily challenges", () => {
+  async function sessionInfo(sessionId: string, userId: string) {
+    const { data, error } = await admin!.rpc("get_game_session", { p_session_id: sessionId, p_user_id: userId });
+    if (error) throw error;
+    return data as { seed: string; puzzle_seed: string; status: string };
+  }
+  const startDaily = (user: TestUser, id: string) => api<DailyStartResponse & ApiErrorBody>(user, "POST", `/api/daily/${id}/start`);
+
+  it("shows guests the schedule only", async () => {
+    const response = await api<DailyOverview>(null, "GET", "/api/daily");
+    expect(response.status).toBe(200);
+    expect(response.data).toMatchObject({ signedIn: false, history: [] });
+    expect(response.data.today.map((c) => [c.assignmentId, c.state, c.attempt])).toEqual([
+      ["daily-audit", null, null],
+      ["daily-sales-briefing", null, null],
+    ]);
+    expect((await api(null, "POST", "/api/daily/daily-audit/start")).status).toBe(401);
+  });
+
+  it("gives every player the same puzzle and exactly one ranked attempt", async () => {
+    const [ann, ben] = await Promise.all([createUser("daily-ann"), createUser("daily-ben")]);
+    const overview = (await api<DailyOverview>(ann, "GET", "/api/daily")).data;
+    expect(overview.today.map((c) => c.state)).toEqual(["available", "available"]);
+
+    const a = await startDaily(ann, "daily-audit");
+    const b = await startDaily(ben, "daily-audit");
+    expect(a.status).toBe(200);
+    expect(a.data.status).toBe("started");
+    expect(b.data.challengeId).toBe(a.data.challengeId);
+    expect(b.data.round).toMatchObject({ rulesVersion: a.data.round.rulesVersion });
+    if (a.data.gameId === "reconciliation-rush" && b.data.gameId === "reconciliation-rush") expect(b.data.round.challenge).toEqual(a.data.round.challenge);
+    const [sa, sb] = [await sessionInfo(a.data.round.sessionId, ann.id), await sessionInfo(b.data.round.sessionId, ben.id)];
+    expect(sa.puzzle_seed).toBe(sb.puzzle_seed);
+    expect(sa.seed).not.toBe(sb.seed);
+    expect(JSON.stringify(a.data)).not.toContain(sa.puzzle_seed);
+    expect(JSON.stringify(a.data)).not.toContain(sa.seed);
+
+    // Reload: the same round with its original clock.
+    const resumed = await startDaily(ann, "daily-audit");
+    expect(resumed.data).toMatchObject({ status: "resumed", round: { sessionId: a.data.round.sessionId, startedAt: a.data.round.startedAt } });
+
+    const { entries } = await answersFor(a.data.round.sessionId, ann.id);
+    const submit = await api<SubmitRoundResponse>(ann, "POST", `/api/rounds/${a.data.round.sessionId}/submit`, { entries: entries(2), score: 1050 });
+    expect(submit.status).toBe(200);
+    expect(submit.data.review).toBeNull();
+    expect(submit.data.daily).toMatchObject({ challengeId: a.data.challengeId });
+    expect(submit.data.record).toMatchObject({ errorsFixed: 2, completion: "submitted" });
+    expect(submit.data.record.xpAwarded).toBe(xpForScore(submit.data.record.score));
+    expect(JSON.stringify(submit.data)).not.toContain(sa.puzzle_seed);
+    expect(JSON.stringify(submit.data)).not.toContain('"solution"');
+    expect((submit.data.achievements ?? []).map((u) => u.id)).toContain("daily-grind");
+
+    const retry = await api<SubmitRoundResponse>(ann, "POST", `/api/rounds/${a.data.round.sessionId}/submit`, { entries: entries(5) });
+    expect(retry.data).toMatchObject({ created: false, review: null });
+    expect(retry.data.record).toEqual(submit.data.record);
+    const again = await startDaily(ann, "daily-audit");
+    expect(again.status).toBe(409);
+    expect(again.data.error.code).toBe("daily_attempt_used");
+    expect(await ledgerRows(ann.id)).toBe(1);
+    expect(await contributionEvents(ann.id)).toHaveLength(1);
+
+    const after = (await api<DailyOverview>(ann, "GET", "/api/daily")).data.today.find((c) => c.assignmentId === "daily-audit")!;
+    expect(after).toMatchObject({ state: "completed", attempt: { result: { score: submit.data.record.score, correct: 2 } } });
+    expect(after.attempt!.standing!.rank).toBeGreaterThanOrEqual(1);
+    expect(JSON.stringify(after)).not.toContain(sa.puzzle_seed);
+    // Practice is still unlimited.
+    expect((await api(ann, "POST", "/api/rounds")).status).toBe(200);
+  });
+
+  it("serves truly concurrent starts one round", async () => {
+    const cal = await createUser("daily-concurrent");
+    const starts = await Promise.all(Array.from({ length: 5 }, () => startDaily(cal, "daily-sales-briefing")));
+    expect(starts.every((s) => s.status === 200)).toBe(true);
+    expect(new Set(starts.map((s) => s.data.round.sessionId)).size).toBe(1);
+    expect(starts.filter((s) => s.data.status === "started")).toHaveLength(1);
+    const { data } = await admin!.from("daily_challenge_attempts").select("session_id").eq("user_id", cal.id);
+    expect(data).toHaveLength(1);
+  });
+
+  it("protects a running daily round from practice starts and settles it once expired", async () => {
+    const dee = await createUser("daily-expire");
+    const start = await startDaily(dee, "daily-sales-briefing");
+    const blocked = await api<ApiErrorBody>(dee, "POST", "/api/rounds");
+    expect(blocked.status).toBe(409);
+    expect(blocked.data.error.code).toBe("daily_in_progress");
+    await shiftClock(start.data.round.sessionId, 120_000);
+    expect((await api(dee, "POST", "/api/pipeline/rounds")).status).toBe(200);
+    const view = (await api<DailyOverview>(dee, "GET", "/api/daily")).data.today.find((c) => c.assignmentId === "daily-sales-briefing")!;
+    expect(view).toMatchObject({ state: "timedOut", attempt: { result: { completion: "timedOut", score: 0 } } });
+    expect((await startDaily(dee, "daily-sales-briefing")).status).toBe(409);
+  });
+
+  it("seals Pipeline Panic daily reviews", async () => {
+    const eve = await createUser("daily-sales");
+    const start = await startDaily(eve, "daily-sales-briefing");
+    const { decisions } = await pipelineAnswers(start.data.round.sessionId, eve.id);
+    const submit = await api<SubmitPipelineResponse>(eve, "POST", `/api/pipeline/rounds/${start.data.round.sessionId}/submit`, { decisions });
+    expect(submit.data.review).toBeNull();
+    expect(submit.data.record.errorsFixed).toBe(submit.data.record.totalErrors);
+    expect(JSON.stringify(submit.data)).not.toMatch(/"best"|"explanation"/);
+  });
+
+  it("keeps challenges and seeds out of reach of clients and direct writes", async () => {
+    const mal = await createUser("daily-forge");
+    expect((await mal.db.from("daily_challenges").select("*")).error?.message).toMatch(/permission denied/);
+    expect((await admin!.from("daily_challenges").select("seed")).error?.message).toMatch(/permission denied/);
+    expect((await mal.db.rpc("start_daily_attempt", { p_user_id: mal.id, p_assignment_id: "daily-audit" })).error).not.toBeNull();
+    expect((await mal.db.rpc("get_daily_status", { p_user_id: mal.id, p_history_days: 7 })).error).not.toBeNull();
+    const victim = await createUser("daily-victim");
+    const start = await startDaily(victim, "daily-audit");
+    const forged = await mal.db.from("daily_challenge_attempts").insert({ challenge_id: start.data.challengeId, user_id: mal.id, session_id: start.data.round.sessionId });
+    expect(forged.error?.message).toMatch(/permission denied/);
+    expect((await admin!.from("daily_challenge_attempts").insert({ challenge_id: start.data.challengeId, user_id: mal.id, session_id: start.data.round.sessionId })).error?.message).toMatch(/permission denied/);
+    expect((await mal.db.from("daily_challenge_attempts").select("*")).data).toEqual([]);
+    expect(((await victim.db.from("daily_challenge_attempts").select("challenge_id")).data ?? []).length).toBe(1);
+    // Someone else's daily round can't be resumed, hinted or submitted.
+    expect((await api(mal, "POST", `/api/rounds/${start.data.round.sessionId}/submit`, { entries: {} })).status).toBe(404);
+    expect((await api(mal, "POST", `/api/rounds/${start.data.round.sessionId}/hint`, { entries: {} })).status).toBe(404);
+    expect((await api(mal, "POST", "/api/daily/daily-grind/start")).status).toBe(404);
+  });
+
+  it("removes attempts with the account and leaves no inconsistencies", async () => {
+    const leaver = await createUser("daily-leaver");
+    const start = await startDaily(leaver, "daily-audit");
+    const { entries } = await answersFor(start.data.round.sessionId, leaver.id);
+    await api(leaver, "POST", `/api/rounds/${start.data.round.sessionId}/submit`, { entries: entries(5) });
+    await admin!.auth.admin.deleteUser(leaver.id);
+    const { data } = await admin!.from("daily_challenge_attempts").select("session_id").eq("user_id", leaver.id);
+    expect(data).toEqual([]);
+    const integrity = await admin!.rpc("check_progression_integrity");
+    expect(Object.values(integrity.data as Record<string, number>).every((n) => n === 0)).toBe(true);
   });
 });

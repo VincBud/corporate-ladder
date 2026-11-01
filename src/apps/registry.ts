@@ -1,7 +1,8 @@
-import { BriefcaseIcon, BuildingIcon, FunnelIcon, GridIcon, IdBadgeIcon, LadderIcon, TrophyIcon } from "@/components/icons";
+import { BriefcaseIcon, BuildingIcon, CalendarIcon, FunnelIcon, GridIcon, IdBadgeIcon, LadderIcon, TrophyIcon } from "@/components/icons";
 import { APP_IDS, type AppId } from "@/types/app";
 import { CareerApp } from "./career/career-app";
 import { CompanyApp } from "./company/company-app";
+import { DailyApp } from "./daily/daily-app";
 import { DepartmentsApp } from "./departments/departments-app";
 import { PipelinePanicApp } from "./pipeline-panic/pipeline-panic-app";
 import { LeaderboardApp } from "./leaderboard/leaderboard-app";
@@ -29,6 +30,16 @@ const APP_REGISTRY: Record<AppId, AppDefinition> = {
     // Like Spreadsheet Wars: the CRM needs room.
     window: { initial: { fraction: 0.8 }, min: { width: 600, height: 420 } },
     component: PipelinePanicApp,
+  },
+  daily: {
+    id: "daily",
+    title: "Daily Assignments",
+    description: "Today's shared challenges: one ranked attempt per game, same puzzle for everyone.",
+    icon: CalendarIcon,
+    tint: "from-violet-400 to-violet-700",
+    // Hosts the round screens, so it opens large like the games.
+    window: { initial: { fraction: 0.8 }, min: { width: 600, height: 420 } },
+    component: DailyApp,
   },
   career: {
     id: "career",

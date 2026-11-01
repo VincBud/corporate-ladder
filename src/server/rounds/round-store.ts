@@ -11,7 +11,15 @@ export interface SessionRow {
   sessionId: string;
   gameId: string;
   rulesVersion: number;
+  /** The session's own seed (stored with the result; unique per session). */
   seed: string;
+  /**
+   * The seed the puzzle is generated from: the session seed, or for a ranked
+   * Daily Challenge the day's shared seed. Never leaves the server.
+   */
+  puzzleSeed: string;
+  /** Set when the session is a player's ranked Daily Challenge attempt. */
+  daily: DailySessionLink | null;
   status: "active" | "finalized" | "abandoned";
   startedAt: Date;
   deadlineAt: Date;
@@ -23,6 +31,14 @@ export interface SessionRow {
   result: ResultRow | null;
   /** The owner's current Corporate XP (sum of their ledger). */
   totalXp: number;
+}
+
+export interface DailySessionLink {
+  challengeId: string;
+  assignmentId: string;
+  /** UTC date (YYYY-MM-DD). */
+  challengeDate: string;
+  closesAt: Date;
 }
 
 export interface CreatedSession {
@@ -94,6 +110,15 @@ export interface RoundStore {
 type Json = Record<string, unknown>;
 const date = (value: unknown) => new Date(String(value));
 
+function toDailyLink(data: Json): DailySessionLink {
+  return {
+    challengeId: String(data.challenge_id),
+    assignmentId: String(data.assignment_id),
+    challengeDate: String(data.challenge_date).slice(0, 10),
+    closesAt: date(data.closes_at),
+  };
+}
+
 export function createRpcRoundStore(rpc: RpcCall): RoundStore {
   async function call(fn: string, args: Record<string, unknown>): Promise<unknown> {
     try {
@@ -124,6 +149,8 @@ export function createRpcRoundStore(rpc: RpcCall): RoundStore {
         gameId: String(data.game_id),
         rulesVersion: Number(data.rules_version),
         seed: String(data.seed),
+        puzzleSeed: String(data.puzzle_seed ?? data.seed),
+        daily: data.daily ? toDailyLink(data.daily as Json) : null,
         status: data.status as SessionRow["status"],
         startedAt: date(data.started_at),
         deadlineAt: date(data.deadline_at),

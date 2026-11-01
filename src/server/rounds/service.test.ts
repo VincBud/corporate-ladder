@@ -115,12 +115,12 @@ describe("submitting", () => {
     expect(result.record.errorsFixed).toBe(5);
     expect(result.record.completion).toBe("submitted");
     expect(result.record.xpAwarded).toBe(xpForScore(result.record.score));
-    expect(result.review.score.total).toBe(result.record.score);
-    expect(result.review.score.timeBonus).toBeGreaterThan(250);
+    expect(result.review!.score.total).toBe(result.record.score);
+    expect(result.review!.score.timeBonus).toBeGreaterThan(250);
     expect(await ledger(alice)).toEqual({ n: 1, xp: result.record.xpAwarded });
     expect(result.totalXp).toBe(result.record.xpAwarded);
     // Answers are revealed only now that the round is final.
-    expect(result.review.challenge.errors).toHaveLength(5);
+    expect(result.review!.challenge.errors).toHaveLength(5);
   });
 
   it("ignores self-reported scores, times, XP and outcomes", async () => {
@@ -146,7 +146,7 @@ describe("submitting", () => {
     const again = await service.submitRound(alice, response.sessionId, { entries: {} }); // different cells, too
     expect(again.created).toBe(false);
     expect(again.record).toEqual(first.record);
-    expect(again.review.evaluation.fixedCount).toBe(5);
+    expect(again.review!.evaluation.fixedCount).toBe(5);
     expect(await ledger(alice)).toEqual({ n: 1, xp: first.record.xpAwarded });
   });
 
@@ -199,7 +199,7 @@ describe("submitting", () => {
       entries: { [cellKey(target.address)]: "=EVIL(A1); alert(1)" },
     });
     expect(result.record.incorrectCorrections).toBe(1);
-    expect(result.review.evaluation.errors.find((e) => e.error.id === target.id)!.status).toBe("incorrect");
+    expect(result.review!.evaluation.errors.find((e) => e.error.id === target.id)!.status).toBe("incorrect");
   });
 });
 
@@ -221,7 +221,7 @@ describe("deadlines (database time)", () => {
     expect(result.record.completion).toBe("timedOut");
     expect(result.record.errorsFixed).toBe(5);
     expect(result.record.timeRemainingMs).toBe(0);
-    expect(result.review.score.timeBonus).toBe(0);
+    expect(result.review!.score.timeBonus).toBe(0);
   });
 
   it("ignores cells submitted after the tolerance", async () => {
@@ -271,13 +271,13 @@ describe("Request Assistance (verified)", () => {
     expect(hint.message).not.toContain(challenge.cells.get(cellKey(target.address))!.solution);
     const result = await service.submitRound(alice, response.sessionId, { entries: solutionEntries(challenge) });
     expect(result.record.assistanceUsed).toBe(true);
-    expect(result.review.hint).toEqual(hint);
+    expect(result.review!.hint).toEqual(hint);
     expect(result.record.xpAwarded).toBe(xpForScore(result.record.score));
     // All fixed early: every correction point plus a time bonus, and no deduction for the hint.
     const fullPoints = challenge.errors.reduce((sum, e) => sum + DIFFICULTY_POINTS[e.difficulty], 0);
-    expect(result.review.score.correctionPoints).toBe(fullPoints);
-    expect(result.review.score.penaltyPoints === 0).toBe(true); // -0 from 50 × 0 is still zero
-    expect(result.review.score.timeBonus).toBeGreaterThan(0);
+    expect(result.review!.score.correctionPoints).toBe(fullPoints);
+    expect(result.review!.score.penaltyPoints === 0).toBe(true); // -0 from 50 × 0 is still zero
+    expect(result.review!.score.timeBonus).toBeGreaterThan(0);
   });
 
   it("is unavailable after the deadline and after the round ends", async () => {

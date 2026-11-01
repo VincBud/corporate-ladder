@@ -3,6 +3,7 @@ import type { PipelineHint } from "@/games/pipeline-panic/hints";
 import type { FinishedPipelineReview } from "@/games/pipeline-panic/review";
 import type { PublicPipelineRound } from "@/games/pipeline-panic/types";
 import type { AchievementUnlock } from "./achievements";
+import type { DailyRoundLink } from "./daily";
 import type { GameResultRecord } from "./progression";
 
 export interface StartPipelineResponse {
@@ -19,7 +20,6 @@ export interface PipelineHintResponse {
   hint: PipelineHint;
 }
 
-
 export interface SubmitPipelineResponse {
   record: GameResultRecord;
   contribution: { recorded: boolean };
@@ -27,6 +27,11 @@ export interface SubmitPipelineResponse {
   achievements?: AchievementUnlock[];
   created: boolean;
   totalXp: number;
-  /** Client-safe: unattempted opportunities carry no answer; no seed or answer labels. */
-  review: FinishedPipelineReview;
+  /**
+   * Client-safe: unattempted opportunities carry no answer; no seed or answer labels.
+   * Null for ranked Daily Challenge rounds (answers stay sealed).
+   */
+  review: FinishedPipelineReview | null;
+  /** Set for ranked Daily Challenge rounds. */
+  daily?: DailyRoundLink;
 }

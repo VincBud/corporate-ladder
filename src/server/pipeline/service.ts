@@ -17,7 +17,7 @@ import type { PipelineRound } from "@/games/pipeline-panic/types";
 import type { PipelineHintResponse, StartPipelineResponse, SubmitPipelineResponse } from "@/types/pipeline-play";
 import { RoundError } from "../rounds/errors";
 import type { ContributionOutcome, ResultRow, RoundStore, SessionRow } from "../rounds/round-store";
-import { judgeSubmissionTiming, resultRowToRecord } from "../rounds/service";
+import { dailyRoundLink, judgeSubmissionTiming, resultRowToRecord } from "../rounds/service";
 import { decodeDecisions, encodeDecisions, parseDecisions } from "./payload";
 import { PIPELINE_PANIC, pipelineRoundFor } from "./rules";
 
@@ -41,6 +41,8 @@ function sessionHint(session: SessionRow, round: PipelineRound): PipelineHint | 
 
 export interface PipelineRoundService {
   startRound(userId: string): Promise<StartPipelineResponse>;
+  /** The public round of an existing active session, with its original start (resume after reload). */
+  resumeRound(userId: string, sessionId: string): Promise<{ round: StartPipelineResponse; hint: PipelineHint | null }>;
   requestHint(userId: string, sessionId: string, body: unknown): Promise<PipelineHintResponse>;
   submitRound(userId: string, sessionId: string, body: unknown): Promise<SubmitPipelineResponse>;
 }
@@ -50,7 +52,18 @@ export function createPipelineRoundService({ store, createSeed = createPipelineS
     const session = await store.getSession(sessionId, userId);
     // Someone else's session, or another game's, looks exactly like a missing one.
     if (!session || session.gameId !== PIPELINE_PANIC) throw new RoundError("not_found");
-    return { session, round: pipelineRoundFor(session.rulesVersion, session.seed) };
+    return { session, round: pipelineRoundFor(session.rulesVersion, session.puzzleSeed) };
+  }
+
+  function startResponse(session: SessionRow, round: PipelineRound): StartPipelineResponse {
+    return {
+      sessionId: session.sessionId,
+      round: toPublicPipelineRound(round),
+      rulesVersion: session.rulesVersion,
+      startedAt: session.startedAt.toISOString(),
+      serverNow: session.dbNow.toISOString(),
+      durationMs: session.durationMs,
+    };
   }
 
   function buildResponse(
@@ -61,12 +74,17 @@ export function createPipelineRoundService({ store, createSeed = createPipelineS
     totalXp: number,
     contribution: ContributionOutcome | null,
   ): SubmitPipelineResponse {
-    const decisions = decodeDecisions(row.submission);
-    return {
+    const base = {
       record: resultRowToRecord(row),
       contribution: { recorded: contribution?.status === "created" || contribution?.status === "duplicate" },
       created,
       totalXp,
+    };
+    // Ranked daily rounds share one pipeline: no best decisions or explanations while others still play.
+    if (session.daily) return { ...base, review: null, daily: dailyRoundLink(session) };
+    const decisions = decodeDecisions(row.submission);
+    return {
+      ...base,
       review: {
         ...buildPipelineReview({ round, decisions, remainingMs: row.time_remaining_ms, durationMs: session.durationMs, hint: sessionHint(session, round) }),
         decisions,
@@ -82,17 +100,14 @@ export function createPipelineRoundService({ store, createSeed = createPipelineS
   return {
     async startRound(userId) {
       const created = await store.createSession(userId, PIPELINE_PANIC, createSeed());
-      const session = await store.getSession(created.sessionId, userId);
-      if (!session) throw new RoundError("not_found");
-      const round = pipelineRoundFor(session.rulesVersion, session.seed);
-      return {
-        sessionId: session.sessionId,
-        round: toPublicPipelineRound(round),
-        rulesVersion: session.rulesVersion,
-        startedAt: session.startedAt.toISOString(),
-        serverNow: session.dbNow.toISOString(),
-        durationMs: session.durationMs,
-      };
+      const { session, round } = await loadOwned(userId, created.sessionId);
+      return startResponse(session, round);
+    },
+
+    async resumeRound(userId, sessionId) {
+      const { session, round } = await loadOwned(userId, sessionId);
+      if (session.status !== "active" || judgeSubmissionTiming(session).completion === "timedOut") throw new RoundError("session_closed");
+      return { round: startResponse(session, round), hint: sessionHint(session, round) };
     },
 
     async requestHint(userId, sessionId, body) {

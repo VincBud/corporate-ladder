@@ -4,11 +4,13 @@ import { createRpcRoundStore, type RpcCall } from "./rounds/round-store";
 import { createVerifiedRoundService, type VerifiedRoundService } from "./rounds/service";
 import { createCompanyService, type CompanyService } from "./company/service";
 import { createPipelineRoundService, type PipelineRoundService } from "./pipeline/service";
+import { createDailyService, type DailyService } from "./daily/service";
 
 let rpc: RpcCall | null = null;
 let roundService: VerifiedRoundService | null = null;
 let companyService: CompanyService | null = null;
 let pipelineService: PipelineRoundService | null = null;
+let dailyService: DailyService | null = null;
 
 /** Service-role RPC into the trusted SQL functions. Null when the server isn't configured. */
 export function getTrustedRpc(): RpcCall | null {
@@ -49,4 +51,15 @@ export function getPipelineService(): PipelineRoundService | null {
     pipelineService = createPipelineRoundService({ store: createRpcRoundStore(call) });
   }
   return pipelineService;
+}
+
+export function getDailyService(): DailyService | null {
+  if (!dailyService) {
+    const call = getTrustedRpc();
+    const rush = getRoundService();
+    const pipeline = getPipelineService();
+    if (!call || !rush || !pipeline) return null;
+    dailyService = createDailyService({ rpc: call, rush, pipeline });
+  }
+  return dailyService;
 }

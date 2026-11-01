@@ -14,6 +14,8 @@ interface RoundScreenProps {
   dispatch: (action: PipelineMachineAction) => void;
   /** Verified rounds: asks the server for the hint. Local rounds compute it in the browser. */
   onRequestHint: () => Promise<void>;
+  /** Overrides the Exit confirmation (e.g. ranked daily rounds keep running when you leave). */
+  exitCopy?: { title: string; body: string; confirm: string };
 }
 
 type Dialog = "submit" | "exit" | null;
@@ -33,7 +35,7 @@ const CHIP: Record<PipelineDecision["action"] | "none", string> = {
   none: "bg-slate-100 text-slate-500",
 };
 
-export function PipelineRoundScreen({ active, dispatch, onRequestHint }: RoundScreenProps) {
+export function PipelineRoundScreen({ active, dispatch, onRequestHint, exitCopy }: RoundScreenProps) {
   const id = useId();
   const { round, decisions } = active;
   const listRef = useRef<HTMLUListElement>(null);
@@ -309,15 +311,15 @@ export function PipelineRoundScreen({ active, dispatch, onRequestHint }: RoundSc
       {dialog && (
         <ConfirmDialog
           id={id}
-          title={dialog === "submit" ? "Submit your pipeline?" : "Leave this round?"}
+          title={dialog === "submit" ? "Submit your pipeline?" : (exitCopy?.title ?? "Leave this round?")}
           body={
             dialog === "submit"
               ? decided < opportunities.length
                 ? `${opportunities.length - decided} opportunities have no decision and will score nothing.`
                 : "Your decisions are final once submitted."
-              : "Nothing will be scored and the round can't be resumed."
+              : (exitCopy?.body ?? "Nothing will be scored and the round can't be resumed.")
           }
-          confirmLabel={dialog === "submit" ? "Submit now" : "Leave round"}
+          confirmLabel={dialog === "submit" ? "Submit now" : (exitCopy?.confirm ?? "Leave round")}
           onCancel={() => setDialog(null)}
           onConfirm={() => {
             setDialog(null);

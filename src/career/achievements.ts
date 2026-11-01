@@ -88,7 +88,7 @@ export const ACHIEVEMENTS: readonly AchievementDefinition[] = [
   def({ id: "team-player", name: "Team Player", description: "Make your first verified contribution to the company.", category: "company", icon: "building", rarity: "common", order: 30, status: "available" }),
   def({ id: "quarterly-contributor", name: "Quarterly Contributor", description: "Contribute to the company in two different quarters.", category: "company", icon: "building", rarity: "rare", order: 31, status: "available", target: 2 }),
   def({ id: "perfect-quarter", name: "Perfect Quarter", description: "Receive a top rating in a Quarterly Performance Review.", category: "career", icon: "sparkle", rarity: "epic", order: 15, status: "future", futureSource: "quarterlyReview" }),
-  def({ id: "daily-grind", name: "Daily Grind", description: "Complete a Daily Challenge.", category: "gameplay", icon: "clock", rarity: "common", order: 8, status: "future", futureSource: "dailyChallenge" }),
+  def({ id: "daily-grind", name: "Daily Grind", description: "Complete a ranked Daily Challenge before its timer runs out.", category: "gameplay", icon: "clock", rarity: "common", order: 8, status: "available" }),
 ].sort((a, b) => a.order - b.order);
 
 const BY_ID = new Map(ACHIEVEMENTS.map((a) => [a.id, a]));
@@ -101,6 +101,8 @@ export interface AchievementFacts {
   results: readonly GameResultRecord[];
   memberships: readonly (MembershipPeriod & { id: string; startReason: "initial" | "transfer" | "legacy" })[];
   contributions: readonly { sessionId: string; periodId: string; completedAt: string }[];
+  /** Official results of ranked Daily Challenge attempts (from daily_challenge_attempts). */
+  dailies: readonly { sessionId: string; challengeId: string; challengeDate: string; completion: "submitted" | "timedOut"; completedAt: string }[];
 }
 
 export type AchievementSource = { type: "game_result" | "department_membership" | "contribution_event"; id: string } | null;
@@ -216,7 +218,12 @@ export function evaluateAchievements(facts: AchievementFacts): AchievementEvalua
     "team-player": () => ({ ...contributionSource(contributions[0]), progress: null }),
     "quarterly-contributor": () => ({ ...contributionSource(quarters[1]), progress: { current: Math.min(quarters.length, 2), target: 2 } }),
     "perfect-quarter": () => ({ unlocked: false, achievedAt: null, source: null, progress: null }),
-    "daily-grind": () => ({ unlocked: false, achievedAt: null, source: null, progress: null }),
+    "daily-grind": () => {
+      const first = nth(facts.dailies.filter((d) => d.completion === "submitted"), 1, (d) => d.completedAt);
+      return first
+        ? { unlocked: true, achievedAt: first.completedAt, source: { type: "game_result", id: first.sessionId }, progress: null }
+        : { unlocked: false, achievedAt: null, source: null, progress: null };
+    },
   };
 
   return ACHIEVEMENTS.map((a) => {

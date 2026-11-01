@@ -21,6 +21,7 @@ import { scoreRound } from "@/games/spreadsheet-wars/reconciliation-rush/scoring
 import type { Challenge } from "@/games/spreadsheet-wars/reconciliation-rush/types";
 import { evaluateRound, type PlayerEntries } from "@/games/spreadsheet-wars/reconciliation-rush/validate";
 import { GAME_IDS, type GameId, type GameResultRecord } from "@/types/progression";
+import type { DailyRoundLink } from "@/types/daily";
 import type { HintResponse, StartRoundResponse, SubmitRoundResponse } from "@/types/verified-play";
 import { RoundError } from "./errors";
 import { parseEntries } from "./payload";
@@ -68,6 +69,13 @@ export function judgeSubmissionTiming(session: Pick<SessionRow, "startedAt" | "d
  */
 export function seedReference(seed: string): string {
   return `ref-${createHash("sha256").update(seed).digest("hex").slice(0, 24)}`;
+}
+
+/** Daily rounds: what the client may know about the challenge (no seed). */
+export function dailyRoundLink(session: SessionRow): DailyRoundLink | undefined {
+  if (!session.daily) return undefined;
+  const { challengeId, assignmentId, challengeDate, closesAt } = session.daily;
+  return { challengeId, assignmentId, date: challengeDate, closesAt: closesAt.toISOString() };
 }
 
 export function resultRowToRecord(row: ResultRow): GameResultRecord {
@@ -133,6 +141,8 @@ function payloadFromRow(row: ResultRow): ResultPayload {
 
 export interface VerifiedRoundService {
   startRound(userId: string): Promise<StartRoundResponse>;
+  /** The public puzzle of an existing active session, with its original start (resume after reload). */
+  resumeRound(userId: string, sessionId: string): Promise<{ round: StartRoundResponse; hint: RoundHint | null }>;
   requestHint(userId: string, sessionId: string, body: unknown): Promise<HintResponse>;
   submitRound(userId: string, sessionId: string, body: unknown): Promise<SubmitRoundResponse>;
 }
@@ -148,7 +158,18 @@ export function createVerifiedRoundService({
     const session = await store.getSession(sessionId, userId);
     // Someone else's session, or another game's, looks exactly like a missing one.
     if (!session || session.gameId !== RECONCILIATION_RUSH) throw new RoundError("not_found");
-    return { session, challenge: challengeFor(session.rulesVersion, session.seed) };
+    return { session, challenge: challengeFor(session.rulesVersion, session.puzzleSeed) };
+  }
+
+  function startResponse(session: SessionRow, challenge: Challenge): StartRoundResponse {
+    return {
+      sessionId: session.sessionId,
+      challenge: serializePublicChallenge(toPublicChallenge(challenge)),
+      rulesVersion: session.rulesVersion,
+      startedAt: session.startedAt.toISOString(),
+      serverNow: session.dbNow.toISOString(),
+      durationMs: session.durationMs,
+    };
   }
 
   /** Rebuilds the full response from what was stored, so retries get identical answers. */
@@ -160,14 +181,20 @@ export function createVerifiedRoundService({
     totalXp: number,
     contribution: ContributionOutcome | null,
   ): SubmitRoundResponse {
-    const entries: PlayerEntries = row.submission ?? {};
-    const evaluation = evaluateRound(challenge, entries);
-    const score = scoreRound(evaluation, row.time_remaining_ms, session.durationMs);
-    return {
+    const base = {
       record: resultRowToRecord(row),
       contribution: { recorded: contribution?.status === "created" || contribution?.status === "duplicate" },
       created,
       totalXp,
+    };
+    // Ranked daily rounds share one puzzle: the review would reveal answers
+    // (including for cells the player never touched) to everyone still to play.
+    if (session.daily) return { ...base, review: null, daily: dailyRoundLink(session) };
+    const entries: PlayerEntries = row.submission ?? {};
+    const evaluation = evaluateRound(challenge, entries);
+    const score = scoreRound(evaluation, row.time_remaining_ms, session.durationMs);
+    return {
+      ...base,
       review: {
         challenge: serializeChallenge(challenge),
         entries,
@@ -187,17 +214,14 @@ export function createVerifiedRoundService({
   return {
     async startRound(userId) {
       const created = await store.createSession(userId, RECONCILIATION_RUSH, createSeed());
-      const session = await store.getSession(created.sessionId, userId);
-      if (!session) throw new RoundError("not_found");
-      const challenge = challengeFor(session.rulesVersion, session.seed);
-      return {
-        sessionId: created.sessionId,
-        challenge: serializePublicChallenge(toPublicChallenge(challenge)),
-        rulesVersion: created.rulesVersion,
-        startedAt: created.startedAt.toISOString(),
-        serverNow: created.dbNow.toISOString(),
-        durationMs: created.durationMs,
-      };
+      const { session, challenge } = await loadOwned(userId, created.sessionId);
+      return startResponse(session, challenge);
+    },
+
+    async resumeRound(userId, sessionId) {
+      const { session, challenge } = await loadOwned(userId, sessionId);
+      if (session.status !== "active" || judgeSubmissionTiming(session).completion === "timedOut") throw new RoundError("session_closed");
+      return { round: startResponse(session, challenge), hint: sessionHint(session, challenge) };
     },
 
     async requestHint(userId, sessionId, body) {

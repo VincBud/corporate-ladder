@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { apiError, rateLimit, requireUser, toErrorResponse } from "@/server/http";
-import { getRoundService } from "@/server/services";
+import { startAfterDailySettlement } from "@/server/daily/service";
+import { getDailyService, getRoundService } from "@/server/services";
 
 /** Starts a verified Reconciliation Rush round for the signed-in player. */
 export async function POST() {
@@ -11,7 +12,9 @@ export async function POST() {
   const service = getRoundService();
   if (!service) return apiError(503, "not_configured", "Verified play isn't configured on this server.");
   try {
-    return NextResponse.json(await service.startRound(auth.user.id), { headers: { "Cache-Control": "no-store" } });
+    // An expired ranked daily round is finalized first; a running one blocks practice (409).
+    const started = await startAfterDailySettlement(getDailyService(), auth.user.id, () => service.startRound(auth.user.id));
+    return NextResponse.json(started, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
     return toErrorResponse(error);
   }

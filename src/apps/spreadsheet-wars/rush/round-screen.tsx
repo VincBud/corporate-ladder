@@ -26,11 +26,19 @@ interface RoundScreenProps {
   dispatch: Dispatch<SpreadsheetWarsAction>;
   /** Verified rounds: asks the server for the hint. Rejects with a readable message. */
   onRequestVerifiedHint?: () => Promise<void>;
+  /** Overrides the Exit confirmation (e.g. ranked daily rounds keep running when you leave). */
+  exitCopy?: ExitCopy;
+}
+
+export interface ExitCopy {
+  title: string;
+  body: string;
+  confirm: string;
 }
 
 type Dialog = "submit" | "abandon" | null;
 
-export function RoundScreen({ round, dispatch, onRequestVerifiedHint }: RoundScreenProps) {
+export function RoundScreen({ round, dispatch, onRequestVerifiedHint, exitCopy }: RoundScreenProps) {
   const { challenge } = round;
   const id = useId();
   const gridRef = useRef<HTMLTableElement>(null);
@@ -382,6 +390,7 @@ export function RoundScreen({ round, dispatch, onRequestVerifiedHint }: RoundScr
           id={id}
           kind={dialog}
           editedCount={editedCount}
+          exitCopy={exitCopy}
           onCancel={() => {
             setDialog(null);
             gridRef.current?.focus({ preventScroll: true });
@@ -454,11 +463,12 @@ interface RoundDialogProps {
   id: string;
   kind: "submit" | "abandon";
   editedCount: number;
+  exitCopy?: ExitCopy;
   onConfirm: () => void;
   onCancel: () => void;
 }
 
-function RoundDialog({ id, kind, editedCount, onConfirm, onCancel }: RoundDialogProps) {
+function RoundDialog({ id, kind, editedCount, exitCopy, onConfirm, onCancel }: RoundDialogProps) {
   const cancelRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
@@ -474,9 +484,9 @@ function RoundDialog({ id, kind, editedCount, onConfirm, onCancel }: RoundDialog
           cancel: "Keep checking",
         }
       : {
-          title: "Abandon this round?",
-          body: "Your edits will be discarded and the round won't be scored. The board meeting will proceed with the wrong numbers.",
-          confirm: "Abandon round",
+          title: exitCopy?.title ?? "Abandon this round?",
+          body: exitCopy?.body ?? "Your edits will be discarded and the round won't be scored. The board meeting will proceed with the wrong numbers.",
+          confirm: exitCopy?.confirm ?? "Abandon round",
           cancel: "Keep working",
         };
 

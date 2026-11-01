@@ -23,6 +23,8 @@ export function toVerifiedRound(response: StartRoundResponse, receivedAt: number
 
 export function toFinishedRound(sessionId: string, response: SubmitRoundResponse): FinishedRound {
   const review = response.review;
+  // Practice rounds always carry a review; only ranked daily rounds (played in Daily Assignments) don't.
+  if (!review) throw new Error("This round's review is sealed.");
   return {
     mode: "verified",
     sessionId,

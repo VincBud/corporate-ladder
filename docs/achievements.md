@@ -27,8 +27,8 @@ Each achievement has a stable id, name, description, category, icon, rarity, dis
 | Internal Mobility | Department | Uncommon | First department transfer | — |
 | Team Player | Company | Common | First verified company contribution event | — |
 | Quarterly Contributor | Company | Rare | Contribution events in 2 different quarters | 2 quarters |
+| Daily Grind | Gameplay | Common | A ranked Daily Challenge submitted before its timer runs out (see [daily-challenges.md](daily-challenges.md)) | — |
 | Perfect Quarter | — | — | **Future:** Quarterly Performance Reviews | — |
-| Daily Grind | — | — | **Future:** Daily Challenges | — |
 
 Definitions:
 
@@ -86,5 +86,5 @@ The privilege allowlist test (`server/security.test.ts`) includes the new object
 
 ## Prepared for later (not implemented)
 
-- **Schema:** `status = 'future'` and `futureSource` (`dailyChallenge`, `quarterlyReview`) mark achievements whose mechanics don't exist yet.
+- **Schema:** `status = 'future'` and `futureSource` (e.g. `quarterlyReview`) mark achievements whose mechanics don't exist yet. Daily Grind was activated this way when Daily Challenges shipped (migration `20261101150000`).
 - **New categories and sources:** these can be added for Daily/Weekly Challenges, Quarterly Performance Reviews, department-specific achievements, community milestones and special events, by extending `source_type` and `get_achievement_facts`.

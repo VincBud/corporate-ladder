@@ -59,8 +59,8 @@ describe("registry and database", () => {
 
   it("keeps definitions immutable except for their status", async () => {
     await expect(t.admin.query("update public.achievement_definitions set rarity = 'common' where id = 'corporate-veteran'")).rejects.toThrow(/achievement_definitions_immutable/);
-    await expect(t.admin.query("delete from public.achievement_definitions where id = 'daily-grind'")).rejects.toThrow(/achievement_definitions_immutable/);
-    await t.admin.query("update public.achievement_definitions set status = status where id = 'daily-grind'");
+    await expect(t.admin.query("delete from public.achievement_definitions where id = 'perfect-quarter'")).rejects.toThrow(/achievement_definitions_immutable/);
+    await t.admin.query("update public.achievement_definitions set status = status where id = 'perfect-quarter'");
   });
 });
 
@@ -156,7 +156,7 @@ describe("award validation", () => {
   it("rejects future, unknown and malformed awards", async () => {
     const gil = await t.createUser("ach-gil@example.com");
     for (const bad of [
-      [{ achievement_id: "daily-grind" }],
+      [{ achievement_id: "perfect-quarter" }],
       [{ achievement_id: "not-a-thing" }],
       [{ achievement_id: "first-assignment", source_type: "game_result" }],
       Array.from({ length: 51 }, () => ({ achievement_id: "first-assignment" })),
@@ -205,7 +205,7 @@ describe("access control", () => {
     await expect(t.asAnon((db) => db.query(insert, [kim]))).rejects.toThrow(denied);
     await expect(t.asUser(kim, (db) => db.query("select public.award_achievements($1, '[{\"achievement_id\":\"corporate-veteran\"}]'::jsonb)", [kim]))).rejects.toThrow(denied);
     await expect(t.asUser(kim, (db) => db.query("select public.get_achievement_facts($1)", [kim]))).rejects.toThrow(denied);
-    await expect(t.asUser(kim, (db) => db.query("update public.achievement_definitions set status = 'available' where id = 'daily-grind'"))).rejects.toThrow(denied);
+    await expect(t.asUser(kim, (db) => db.query("update public.achievement_definitions set status = 'available' where id = 'perfect-quarter'"))).rejects.toThrow(denied);
     // Even the trusted server writes only through award_achievements.
     await t.db.exec("set role service_role");
     try {

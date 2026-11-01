@@ -4,6 +4,7 @@
  */
 import type { PlayerEntries } from "@/games/spreadsheet-wars/reconciliation-rush/validate";
 import type { CareerResponse, CloudProfile, ImportResponse } from "@/types/cloud-career";
+import type { DailyOverview, DailyStartResponse } from "@/types/daily";
 import type { SelectDepartmentResponse } from "@/types/department-career";
 import type { PipelineDecisions } from "@/games/pipeline-panic/types";
 import type { PipelineHintResponse, StartPipelineResponse, SubmitPipelineResponse } from "@/types/pipeline-play";
@@ -51,6 +52,10 @@ export const api = {
   submitPipeline: (sessionId: string, decisions: PipelineDecisions) =>
     post<SubmitPipelineResponse>(`/api/pipeline/rounds/${sessionId}/submit`, { decisions }),
   career: () => request<CareerResponse>("/api/career"),
+  /** Today's Daily Challenges (personal state when signed in). */
+  daily: () => request<DailyOverview>("/api/daily"),
+  /** Starts the ranked attempt, or resumes it with its original deadline. Never a second attempt. */
+  startDaily: (assignmentId: string) => post<DailyStartResponse>(`/api/daily/${encodeURIComponent(assignmentId)}/start`, {}),
   /** Public company snapshot; validate with parseCompanySnapshot (see company-source.ts). */
   company: () => request<unknown>("/api/company"),
   importLegacy: (records: readonly GameResultRecord[]) => post<ImportResponse>("/api/career/import", { records }),
