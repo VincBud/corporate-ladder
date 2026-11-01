@@ -13,6 +13,11 @@ export interface AppProps {
    * active game round. Pass null to allow closing without confirmation.
    */
   setCloseWarning: (message: string | null) => void;
+  /**
+   * The app is in a game flow (briefing, round, results or review) that shell
+   * prompts such as surveys must not interrupt. Pass false when back in the lobby.
+   */
+  setInFlow: (active: boolean) => void;
 }
 
 export interface AppDefinition {

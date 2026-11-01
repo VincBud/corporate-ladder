@@ -26,6 +26,8 @@ interface TaskbarProps {
   onOpenApp: (appId: AppId) => void;
   /** Reopens the Employee Orientation; null while a round is running. */
   onOpenOrientation: (() => void) | null;
+  /** Opens the Employee Experience Survey; null while a round is running. */
+  onOpenSurvey: (() => void) | null;
 }
 
 export function Taskbar({
@@ -37,6 +39,7 @@ export function Taskbar({
   onWindowButtonClick,
   onOpenApp,
   onOpenOrientation,
+  onOpenSurvey,
 }: TaskbarProps) {
   const triggersRef = useRef<HTMLDivElement>(null);
   const startButtonRef = useRef<HTMLButtonElement>(null);
@@ -113,6 +116,7 @@ export function Taskbar({
           returnFocusRef={startButtonRef}
           onLaunch={onOpenApp}
           onOpenOrientation={onOpenOrientation}
+          onOpenSurvey={onOpenSurvey}
           onClose={() => onLauncherOpenChange(false)}
         />
       )}

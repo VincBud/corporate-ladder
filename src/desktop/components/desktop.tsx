@@ -4,6 +4,10 @@ import { useEffect, useReducer, useRef, useState } from "react";
 import { APPS, getApp } from "@/apps/registry";
 import { markAppVisited, useVisitedApps } from "@/onboarding/checklist";
 import { rememberOrientation, shouldAutoShowOrientation, useOrientationMemory } from "@/onboarding/orientation";
+import { shouldAutoPromptSurvey } from "@/feedback/survey";
+import { recordAutoPrompt, recordSubmitted, useSurveyMemory } from "@/feedback/survey-memory";
+import { api } from "@/services/api-client";
+import { GAME_IDS } from "@/types/progression";
 import { requestLaunchIntent } from "../launch-intent";
 import { BRAND } from "@/config/brand";
 import type { AppId } from "@/types/app";
@@ -24,6 +28,7 @@ import { AuthNoticeToast } from "./auth-notice-toast";
 import { AchievementToast } from "./achievement-toast";
 import { dismissAchievementToast, useNextAchievementToast } from "@/achievements/toast-queue";
 import { DepartmentPrompt, useDepartmentPromptDismissed } from "./department-prompt";
+import { FeedbackSurvey } from "./feedback-survey";
 import { Orientation } from "./orientation";
 import { PromotionToast } from "./promotion-toast";
 import { Wallpaper } from "./wallpaper";
@@ -64,6 +69,12 @@ export function Desktop({ employee: baseEmployee }: { employee: Employee }) {
   const [orientation, setOrientation] = useState<"undecided" | "open" | "closed">("undecided");
   // Whether the player closed a game window this visit ("after their first assignment").
   const [leftGame, setLeftGame] = useState(false);
+  // Apps in a game flow (briefing, round, results, review): no survey prompt until they're back in the lobby.
+  const [flowApps, setFlowApps] = useState<ReadonlySet<AppId>>(() => new Set());
+  // Employee Experience Survey: open state, and whether the account already answered (server-backed).
+  const [survey, setSurvey] = useState<{ open: boolean; auto: boolean; seq: number }>({ open: false, auto: false, seq: 0 });
+  const surveyMemory = useSurveyMemory();
+  const [feedbackStatus, setFeedbackStatus] = useState<{ userId: string; submittedAt: string | null } | null>(null);
 
   const focusedAppId = selectFocusedAppId(windowState);
   const windowsInOpenOrder = [...windowState.windows].sort((a, b) => a.openSeq - b.openSeq);
@@ -75,6 +86,7 @@ export function Desktop({ employee: baseEmployee }: { employee: Employee }) {
     promptUserId !== "" &&
     promptDismissed === false &&
     orientation !== "open" &&
+    !survey.open &&
     !busy &&
     (career.records.length > 0 || leftGame) &&
     !windowState.windows.some((w) => w.appId === "departments");
@@ -96,7 +108,54 @@ export function Desktop({ employee: baseEmployee }: { employee: Employee }) {
   }
   const orientationOpen = orientation === "open";
 
+  // Completed rounds (both games, submitted or timed out; each session once). Abandoned rounds are never recorded.
+  const completedRecords = career.records.filter((r) => (GAME_IDS as readonly string[]).includes(r.gameId));
+  const completedRounds = new Set(completedRecords.map((r) => r.id)).size;
+  const gamesPlayed = [...new Set(completedRecords.map((r) => r.gameId))].sort();
+  const signedInUserId = auth.status === "signedIn" ? (auth.user?.id ?? null) : null;
+  const serverStatusKnown = signedInUserId === null || feedbackStatus?.userId === signedInUserId;
+  const submittedOnServer = signedInUserId !== null && feedbackStatus?.userId === signedInUserId && feedbackStatus.submittedAt !== null;
+  if (
+    !survey.open &&
+    progressKnown &&
+    serverStatusKnown &&
+    shouldAutoPromptSurvey({
+      memory: surveyMemory,
+      completedRounds,
+      submittedOnServer,
+      blocked: busy || flowApps.size > 0 || orientation !== "closed",
+    })
+  ) {
+    setSurvey((s) => ({ open: true, auto: true, seq: s.seq + 1 }));
+  }
+
   // Move keyboard focus into whichever window becomes active.
+  // An automatic prompt counts as soon as it opens (and stops other tabs from prompting too).
+  const recordedPrompt = useRef(0);
+  useEffect(() => {
+    if (survey.open && survey.auto && recordedPrompt.current !== survey.seq) {
+      recordedPrompt.current = survey.seq;
+      recordAutoPrompt(completedRounds);
+    }
+  }, [survey, completedRounds]);
+
+  // Accounts: has this account already answered (on any device)?
+  useEffect(() => {
+    if (!signedInUserId) return;
+    let cancelled = false;
+    api.feedbackStatus().then(
+      (status) => {
+        if (!cancelled) setFeedbackStatus({ userId: signedInUserId, submittedAt: status.submitted ? status.submittedAt : null });
+      },
+      () => {
+        // Unknown: don't prompt automatically this visit rather than risk asking someone who already answered.
+      },
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [signedInUserId]);
+
   useEffect(() => {
     if (!focusedAppId) return;
     const element = workspaceRef.current?.querySelector<HTMLElement>(`[data-window-id="${focusedAppId}"]`);
@@ -130,6 +189,22 @@ export function Desktop({ employee: baseEmployee }: { employee: Employee }) {
     if (busy) return; // never over a running round
     setLauncherOpen(false);
     setOrientation("open");
+  }
+
+  function openSurvey() {
+    if (busy) return; // never over a running round
+    setLauncherOpen(false);
+    setSurvey((s) => ({ open: true, auto: false, seq: s.seq + 1 }));
+  }
+
+  function setInFlow(appId: AppId, active: boolean) {
+    setFlowApps((current) => {
+      if (active === current.has(appId)) return current;
+      const next = new Set(current);
+      if (active) next.add(appId);
+      else next.delete(appId);
+      return next;
+    });
   }
 
   function finishOrientation(outcome: "completed" | "dismissed") {
@@ -235,14 +310,15 @@ export function Desktop({ employee: baseEmployee }: { employee: Employee }) {
                 employee={employee}
                 openApp={openApp}
                 setCloseWarning={(message) => setCloseWarning(win.appId, message)}
+                setInFlow={(active) => setInFlow(win.appId, active)}
               />
             </WindowFrame>
           );
         })}
-        {career.promotion && careerScope && !orientationOpen && (
+        {career.promotion && careerScope && !orientationOpen && !survey.open && (
           <PromotionToast change={career.promotion} onDismiss={() => getCareerStore(careerScope).dismissPromotion()} />
         )}
-        {nextAchievement && !busy && !orientationOpen && (
+        {nextAchievement && !busy && !orientationOpen && !survey.open && (
           <AchievementToast unlock={nextAchievement} onDismiss={dismissAchievementToast} onOpen={() => openApp("profile")} />
         )}
         {showDepartmentPrompt && <DepartmentPrompt userId={promptUserId} onChoose={() => openApp("departments")} />}
@@ -253,7 +329,20 @@ export function Desktop({ employee: baseEmployee }: { employee: Employee }) {
             onDismiss={() => finishOrientation("dismissed")}
           />
         )}
-        {auth.notice && !orientationOpen && (
+        {survey.open && !orientationOpen && (
+          <FeedbackSurvey
+            key={survey.seq}
+            signedIn={signedInUserId !== null}
+            previouslySubmittedAt={surveyMemory?.submittedAt ?? (submittedOnServer ? feedbackStatus!.submittedAt : null)}
+            context={{ gamesPlayed, completedRounds }}
+            onSubmitted={(submittedAt) => {
+              recordSubmitted(submittedAt);
+              if (signedInUserId) setFeedbackStatus({ userId: signedInUserId, submittedAt });
+            }}
+            onClose={() => setSurvey((s) => ({ ...s, open: false }))}
+          />
+        )}
+        {auth.notice && !orientationOpen && !survey.open && (
           <AuthNoticeToast notice={auth.notice} onOpenProfile={() => openApp("profile")} onDismiss={() => getAuthStore().dismissNotice()} />
         )}
       </main>
@@ -267,6 +356,7 @@ export function Desktop({ employee: baseEmployee }: { employee: Employee }) {
         onWindowButtonClick={handleWindowButtonClick}
         onOpenApp={openApp}
         onOpenOrientation={busy ? null : openOrientation}
+        onOpenSurvey={busy ? null : openSurvey}
       />
     </div>
   );

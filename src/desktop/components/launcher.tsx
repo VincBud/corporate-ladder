@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, type RefObject } from "react";
 import { AppIcon } from "@/apps/app-icon";
 import type { AppDefinition } from "@/apps/types";
-import { InfoIcon, PowerIcon, SearchIcon } from "@/components/icons";
+import { InfoIcon, PowerIcon, SearchIcon, SparkleIcon } from "@/components/icons";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { getCareerSnapshot } from "@/career/progression";
@@ -24,10 +24,11 @@ interface LauncherProps {
   onLaunch: (appId: AppId) => void;
   /** Null while a round is running (the orientation never covers one). */
   onOpenOrientation: (() => void) | null;
+  onOpenSurvey: (() => void) | null;
   onClose: () => void;
 }
 
-export function Launcher({ id, apps, employee, triggerRef, returnFocusRef, onLaunch, onOpenOrientation, onClose }: LauncherProps) {
+export function Launcher({ id, apps, employee, triggerRef, returnFocusRef, onLaunch, onOpenOrientation, onOpenSurvey, onClose }: LauncherProps) {
   const panelRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const [query, setQuery] = useState("");
@@ -116,6 +117,22 @@ export function Launcher({ id, apps, employee, triggerRef, returnFocusRef, onLau
                 <span className="block text-[13px] font-medium">Employee Orientation</span>
                 <span className="block truncate text-xs text-fg-subtle">
                   {onOpenOrientation ? "The 60-second welcome. Attendance optional." : "Available after your current round."}
+                </span>
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={() => onOpenSurvey?.()}
+              disabled={!onOpenSurvey}
+              className="flex w-full items-center gap-3 rounded-lg px-2 py-2 text-left transition-colors enabled:hover:bg-white/6 disabled:opacity-50"
+            >
+              <span aria-hidden="true" className="grid size-8 shrink-0 place-items-center rounded-lg bg-white/6 text-fg-muted ring-1 ring-line ring-inset">
+                <SparkleIcon className="size-4" />
+              </span>
+              <span className="min-w-0">
+                <span className="block text-[13px] font-medium">Employee Experience Survey</span>
+                <span className="block truncate text-xs text-fg-subtle">
+                  {onOpenSurvey ? "Tell us how the alpha feels. About a minute." : "Available after your current round."}
                 </span>
               </span>
             </button>

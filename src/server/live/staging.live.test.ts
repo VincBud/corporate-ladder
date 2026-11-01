@@ -7,6 +7,7 @@
  * same project. Creates test users and deletes them afterwards.
  * Never run this against production.
  */
+import { createHash } from "node:crypto";
 import { createClient, type Session, type SupabaseClient } from "@supabase/supabase-js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { xpForScore } from "@/career/xp";
@@ -971,5 +972,76 @@ describe.skipIf(!configured || !BASE)("live: daily challenges", () => {
     expect(data).toEqual([]);
     const integrity = await admin!.rpc("check_progression_integrity");
     expect(Object.values(integrity.data as Record<string, number>).every((n) => n === 0)).toBe(true);
+  });
+});
+
+describe.skipIf(!configured || !BASE)("live: alpha feedback", () => {
+  const guestTokens: string[] = [];
+  const guestKey = (token: string) => `guest:${createHash("sha256").update(token).digest("hex")}`;
+  const feedback = (overrides: Record<string, unknown> = {}) => ({
+    requestId: crypto.randomUUID(),
+    ratings: { gameplayFun: 6, easeOfUnderstanding: 7, playability: 8, replayAppeal: 5 },
+    enjoyed: "Live test",
+    improve: null,
+    context: { gamesPlayed: ["pipeline-panic"], completedRounds: 3, deviceCategory: "desktop" },
+    ...overrides,
+  });
+  const guestFeedback = (overrides: Record<string, unknown> = {}) => {
+    const token = crypto.randomUUID();
+    guestTokens.push(token);
+    return feedback({ guestToken: token, ...overrides });
+  };
+
+  afterAll(async () => {
+    for (const token of guestTokens) await admin?.rpc("delete_feedback_responses", { p_respondent_key: guestKey(token) });
+  });
+
+  it("accepts an account's feedback once per request and reports its status", async () => {
+    const ada = await createUser("fb-account");
+    expect((await api<{ submitted: boolean }>(ada, "GET", "/api/feedback/status")).data).toMatchObject({ submitted: false });
+    const request = feedback({ score: 1050, xpAwarded: 999 });
+    const [a, b] = await Promise.all([api<{ status: string; revision: number }>(ada, "POST", "/api/feedback", request), api<{ status: string; revision: number }>(ada, "POST", "/api/feedback", request)]);
+    expect([a.status, b.status]).toEqual([200, 200]);
+    expect([a.data.status, b.data.status].sort()).toEqual(["created", "duplicate"]);
+    expect((await api<{ submitted: boolean; revision: number }>(ada, "GET", "/api/feedback/status")).data).toMatchObject({ submitted: true, revision: 1 });
+    const again = await api<{ revision: number }>(ada, "POST", "/api/feedback", feedback());
+    expect(again.data.revision).toBe(2);
+    expect(await ledgerRows(ada.id)).toBe(0); // no XP for feedback
+  });
+
+  it("validates input and request size", async () => {
+    const ben = await createUser("fb-validate");
+    expect((await api(ben, "POST", "/api/feedback", feedback({ ratings: { gameplayFun: 11, easeOfUnderstanding: 7, playability: 8, replayAppeal: 5 } }))).status).toBe(400);
+    expect((await api(ben, "POST", "/api/feedback", feedback({ improve: "x".repeat(1001) }))).status).toBe(400);
+    expect((await api(ben, "POST", "/api/feedback", JSON.stringify({ ...feedback(), padding: "x".repeat(9000) }))).status).toBe(400);
+    expect((await api(ben, "POST", "/api/feedback", "{not json")).status).toBe(400);
+    expect((await api(null, "POST", "/api/feedback", feedback())).status).toBe(400); // guests need a token
+    expect((await api(null, "GET", "/api/feedback/status")).status).toBe(401);
+  });
+
+  it("keeps feedback private from every client and from direct service-role access", async () => {
+    const cal = await createUser("fb-private");
+    await api(cal, "POST", "/api/feedback", feedback({ enjoyed: "secret opinion" }));
+    const anon = createClient(URL_, PUBLISHABLE, { auth: { persistSession: false } });
+    expect((await anon.from("feedback_responses").select("*")).error?.message).toMatch(/permission denied/);
+    expect((await cal.db.from("feedback_responses").select("*")).error?.message).toMatch(/permission denied/);
+    expect((await admin!.from("feedback_responses").select("*")).error?.message).toMatch(/permission denied/);
+    expect((await cal.db.rpc("get_feedback_report", { p_survey_version: "alpha-1" })).error).not.toBeNull();
+    const report = await admin!.rpc("get_feedback_report", { p_survey_version: "alpha-1" });
+    expect(JSON.stringify(report.data)).toContain("secret opinion");
+    expect(JSON.stringify(report.data)).not.toMatch(/user:|guest:|user_id|@example\.com/);
+    const company = await api(null, "GET", "/api/company");
+    expect(JSON.stringify(company.data)).not.toContain("secret opinion");
+  });
+
+  it("accepts guest feedback and rate-limits guests per network address", async () => {
+    const first = guestFeedback();
+    const created = await api<{ status: string }>(null, "POST", "/api/feedback", first);
+    expect(created.status).toBe(200);
+    expect(created.data.status).toBe("created");
+    expect((await api<{ status: string }>(null, "POST", "/api/feedback", first)).data.status).toBe("duplicate");
+    const statuses: number[] = [];
+    for (let i = 0; i < 6; i++) statuses.push((await api(null, "POST", "/api/feedback", guestFeedback())).status);
+    expect(statuses).toContain(429);
   });
 });

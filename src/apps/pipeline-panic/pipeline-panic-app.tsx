@@ -46,7 +46,7 @@ function toFinished(sessionId: string, response: SubmitPipelineResponse): Finish
   return { mode: "verified", sessionId, localSeed: null, ...review };
 }
 
-export function PipelinePanicApp({ setCloseWarning, openApp }: AppProps) {
+export function PipelinePanicApp({ setCloseWarning, setInFlow, openApp }: AppProps) {
   const [state, dispatch] = useReducer(pipelineReducer, initialPipelineState);
   const [navigated, setNavigated] = useState(false);
   const [contributionFor, setContributionFor] = useState<string | null>(null);
@@ -115,6 +115,13 @@ export function PipelinePanicApp({ setCloseWarning, openApp }: AppProps) {
     setCloseWarning(playing ? ABANDON_WARNING : state.phase === "submitting" ? SUBMITTING_WARNING : null);
     return () => setCloseWarning(null);
   }, [playing, state.phase, setCloseWarning]);
+
+  // Game flow in progress: the desktop holds back prompts such as the survey.
+  const inFlow = state.phase !== "lobby";
+  useEffect(() => {
+    setInFlow(inFlow);
+    return () => setInFlow(false);
+  }, [inFlow, setInFlow]);
 
   useEffect(() => {
     if (!busy) return;

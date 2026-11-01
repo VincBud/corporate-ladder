@@ -64,7 +64,7 @@ function formatUtcDate(date: string): string {
   return new Date(`${date}T12:00:00Z`).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", year: "numeric", timeZone: "UTC" });
 }
 
-export function DailyApp({ openApp, setCloseWarning }: AppProps) {
+export function DailyApp({ openApp, setCloseWarning, setInFlow }: AppProps) {
   const auth = useAuth();
   const scope = useActiveCareerScope();
   const [load, setLoad] = useState<Load>({ status: "loading" });
@@ -93,6 +93,13 @@ export function DailyApp({ openApp, setCloseWarning }: AppProps) {
     setCloseWarning(playing ? PLAYING_WARNING : null);
     return () => setCloseWarning(null);
   }, [playing, setCloseWarning]);
+
+  // Game flow in progress: the desktop holds back prompts such as the survey.
+  const inFlow = view.kind === "playing" || view.kind === "result";
+  useEffect(() => {
+    setInFlow(inFlow);
+    return () => setInFlow(false);
+  }, [inFlow, setInFlow]);
 
   async function start(assignmentId: DailyAssignmentId) {
     setPending(assignmentId);

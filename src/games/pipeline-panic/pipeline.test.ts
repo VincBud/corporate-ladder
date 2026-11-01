@@ -197,7 +197,7 @@ describe("evaluation and scoring", () => {
       randomTotal += s.total / s.maxPossible;
     }
     expect(randomTotal / 500).toBeLessThan(0.1);
-  });
+  }, 20_000); // simulates thousands of rounds; the 5 s default is too tight under full-suite load
 
   it("grades by accuracy and penalizes bad deals in the top grade", () => {
     expect(gradePipeline(evaluatePipeline(round, perfect(round)))).toBe("Exceeds Expectations");

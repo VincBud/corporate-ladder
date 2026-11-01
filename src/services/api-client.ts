@@ -5,6 +5,7 @@
 import type { PlayerEntries } from "@/games/spreadsheet-wars/reconciliation-rush/validate";
 import type { CareerResponse, CloudProfile, ImportResponse } from "@/types/cloud-career";
 import type { DailyOverview, DailyStartResponse } from "@/types/daily";
+import type { FeedbackSubmission } from "@/feedback/survey";
 import type { SelectDepartmentResponse } from "@/types/department-career";
 import type { PipelineDecisions } from "@/games/pipeline-panic/types";
 import type { PipelineHintResponse, StartPipelineResponse, SubmitPipelineResponse } from "@/types/pipeline-play";
@@ -61,6 +62,9 @@ export const api = {
   importLegacy: (records: readonly GameResultRecord[]) => post<ImportResponse>("/api/career/import", { records }),
   /** Joins or transfers; requestId makes retries safe. */
   selectDepartment: (departmentId: string, requestId: string) => post<SelectDepartmentResponse>("/api/department", { departmentId, requestId }),
+  /** Employee Experience Survey. Retrying with the same requestId never creates a second response. */
+  submitFeedback: (submission: FeedbackSubmission) => post<{ status: "created" | "duplicate"; revision: number; submittedAt: string }>("/api/feedback", submission),
+  feedbackStatus: () => request<{ submitted: boolean; revision: number | null; submittedAt: string | null }>("/api/feedback/status"),
   updateProfile: (patch: { displayName?: string }) =>
     request<CloudProfile>("/api/profile", { method: "PATCH", body: JSON.stringify(patch) }),
 };

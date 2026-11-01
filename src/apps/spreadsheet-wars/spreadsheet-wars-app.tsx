@@ -32,7 +32,7 @@ const SUBMITTING_WARNING = "Your round is being verified. Closing now may hide t
 
 const messageOf = (error: unknown) => (error instanceof Error ? error.message : "Something went wrong.");
 
-export function SpreadsheetWarsApp({ setCloseWarning, openApp }: AppProps) {
+export function SpreadsheetWarsApp({ setCloseWarning, setInFlow, openApp }: AppProps) {
   const [state, dispatch] = useReducer(spreadsheetWarsReducer, initialSpreadsheetWarsState);
   // Distinguishes user navigation from the first render, so focus only moves
   // when the player switches screens (not when the window first opens).
@@ -122,6 +122,13 @@ export function SpreadsheetWarsApp({ setCloseWarning, openApp }: AppProps) {
     setCloseWarning(playing ? ABANDON_WARNING : state.phase === "submitting" ? SUBMITTING_WARNING : null);
     return () => setCloseWarning(null);
   }, [playing, state.phase, setCloseWarning]);
+
+  // Game flow in progress: the desktop holds back prompts such as the survey.
+  const inFlow = state.phase !== "lobby" && state.phase !== "practice";
+  useEffect(() => {
+    setInFlow(inFlow);
+    return () => setInFlow(false);
+  }, [inFlow, setInFlow]);
 
   useEffect(() => {
     if (!busy) return;
