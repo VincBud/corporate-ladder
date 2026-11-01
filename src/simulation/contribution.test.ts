@@ -5,7 +5,7 @@ import { METRIC_IDS, demoAggregate, liveAggregate, rushEvent } from "./test-fixt
 import { aggregatePeriod } from "./contribution";
 import type { ContributionEvent } from "./types";
 
-const plannedRule = PLANNED_GAME_RULES.find((r) => r.gameId === "pipeline-triage")!;
+const plannedRule = PLANNED_GAME_RULES.find((r) => r.gameId === "ticket-queue")!;
 
 describe("roundQuality", () => {
   it("is 1 for a perfect round and 0 for an empty one", () => {
@@ -154,7 +154,7 @@ describe("aggregatePeriod", () => {
   });
 
   it("rejects planned games outside the preview", () => {
-    const event = rushEvent({ gameId: "pipeline-triage" });
+    const event = rushEvent({ gameId: "ticket-queue" });
     const { contributions } = aggregatePeriod([event], {
       periodId: "2026-Q3",
       provenance: "server-verified",

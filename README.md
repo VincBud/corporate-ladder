@@ -94,10 +94,14 @@ Progress is saved in this browser only. This is solo progression, not a security
 
 The **Company** app is the company dashboard: revenue, costs, profit, efficiency, department performance, milestones, quarterly history and earnings reports. Verified rounds feed one shared company through normalized, capped contribution points that are separate from XP. The **Live company** tab shows that company from `GET /api/company`; the **Simulation preview** tab shows clearly labeled demo scenarios. Formulas, anti-farming rules and the server contract are in [docs/simulation.md](docs/simulation.md); the balancing audit is in [docs/economy-balance.md](docs/economy-balance.md).
 
+## Pipeline Panic
+
+The second verified minigame, for Sales: triage an end-of-quarter pipeline of 8–10 opportunities in 90 seconds, using a fictional CRM, client emails, discovery notes, contract redlines and a playbook that changes every round. It's scored on the server and feeds Corporate XP, the Sales career and Sales' Pipeline health. See [docs/pipeline-panic.md](docs/pipeline-panic.md).
+
 ## Department careers
 
 Employees join one of nine departments in the **Departments** app, get a job title from that department's career track, and can transfer after 30 days. Department careers are separate from Corporate XP and never affect company contribution. See [docs/careers.md](docs/careers.md).
 
 ## Status
 
-LadderOS desktop shell with six applications. Reconciliation Rush is playable: guests are scored in the browser, and signed-in players get server-verified rounds and XP (see [docs/backend.md](docs/backend.md)). Verified rounds are recorded as append-only company contribution events, and the Company app's Live view shows the shared company computed from them (fictional CorpBucks, aggregate-only). The Simulation preview tab keeps the demo scenarios. Leaderboard data is fictional and labeled as such.
+LadderOS desktop shell with seven applications. Reconciliation Rush and Pipeline Panic are playable: guests are scored in the browser, and signed-in players get server-verified rounds and XP (see [docs/backend.md](docs/backend.md)). Verified rounds are recorded as append-only company contribution events, and the Company app's Live view shows the shared company computed from them (fictional CorpBucks, aggregate-only). The Simulation preview tab keeps the demo scenarios. Leaderboard data is fictional and labeled as such.

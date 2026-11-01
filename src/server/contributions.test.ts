@@ -176,7 +176,9 @@ describe("verified round → contribution event", () => {
     const record = resultRowToRecord(rows[0]);
     const fromRow = contributionEventFromRow(row);
     const fromRecord = contributionEventFromVerifiedResult({ ...record, xpAwarded: 99_999 }, alice);
-    expect({ ...fromRow, formulaVersion: undefined }).toEqual({ ...fromRecord, formulaVersion: undefined });
+    // Browser-facing records carry a seed reference, not the secret seed; everything else matches.
+    expect(record.seed).not.toBe(row.seed);
+    expect({ ...fromRow, formulaVersion: undefined }).toEqual({ ...fromRecord, seed: row.seed, formulaVersion: undefined });
     expect(normalizeEvent(fromRow, RECONCILIATION_RUSH_RULE)).toBe(normalizeEvent(fromRecord, RECONCILIATION_RUSH_RULE));
     expect(normalizeEvent(fromRow, RECONCILIATION_RUSH_RULE)).toBeGreaterThan(0);
   });

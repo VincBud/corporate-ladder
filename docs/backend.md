@@ -65,7 +65,7 @@ proxy.ts ── refreshes session cookies on each request
 | `profiles` | One per auth user (created by trigger): employee number, display name, current department (only via `select_department`) | Read own; update `display_name` only |
 | `department_memberships` | Append-only membership history (see [careers.md](careers.md)) | Read own |
 | `departments` | Canonical departments (`kind`: operating / support) | Read |
-| `game_rules` | Pinned rules per game version: duration, tolerance, XP divisor, rate limit | Read |
+| `game_rules` | Pinned rules per game version (Reconciliation Rush, Pipeline Panic): duration, tolerance, XP divisor, rate limit | Read |
 | `game_sessions` | Server-created rounds: secret seed, start, deadline, hint, status | **None** (the seed regenerates the answer key) |
 | `game_results` | One verified result per session, plus the scored cells | Read own |
 | `xp_ledger` | Authoritative XP: one row per result, `unique(source_type, source_id)` | Read own |
@@ -86,6 +86,8 @@ proxy.ts ── refreshes session cookies on each request
 - **Guests:** play without an account. With no Supabase configured, account UI shows that accounts are unavailable.
 
 ## Verified round lifecycle
+
+Both games (Reconciliation Rush and [Pipeline Panic](pipeline-panic.md)) use this lifecycle and the same database functions. Each game's service accepts only its own sessions, and a player has one active round across games.
 
 1. **Start:** `POST /api/rounds`. The server creates a 128-bit secret seed. The database records `started_at = now()` and the deadline, and abandons any unfinished round. The response contains the **public puzzle only** (no solutions, planted errors or seed).
 2. **Play:** the client keeps edits locally and shows a countdown derived from server time (display only).

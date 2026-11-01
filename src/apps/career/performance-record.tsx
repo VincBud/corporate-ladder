@@ -9,11 +9,21 @@ import {
   RECONCILIATION_RUSH_SCORING_VERSION,
 } from "@/games/spreadsheet-wars/reconciliation-rush/result";
 import { formatNumber, formatPercent } from "@/lib/format";
+import { PIPELINE_PANIC_DIFFICULTY, PIPELINE_PANIC_GAME_ID, PIPELINE_PANIC_SCORING_VERSION } from "@/games/pipeline-panic/result";
+import type { GameResultRecord } from "@/types/progression";
 import type { CareerState } from "@/performance/career-store";
 import { comparisonKey, personalBest, recentResults, scoreShare, summarizePerformance } from "@/performance/stats";
 import { LegacyPractice } from "./legacy-practice";
 
 const timestampFormat = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+
+const GAME_TITLES: Record<GameResultRecord["gameId"], string> = { "reconciliation-rush": "Reconciliation Rush", "pipeline-panic": "Pipeline Panic" };
+
+const PIPELINE_BEST_KEY = comparisonKey({
+  gameId: PIPELINE_PANIC_GAME_ID,
+  difficulty: PIPELINE_PANIC_DIFFICULTY,
+  scoringVersion: PIPELINE_PANIC_SCORING_VERSION,
+});
 
 const BEST_KEY = comparisonKey({
   gameId: RECONCILIATION_RUSH_GAME_ID,
@@ -65,15 +75,20 @@ function StorageNotice({ career }: { career: CareerState }) {
 export function PerformanceRecord({ career, onPlay }: { career: CareerState; onPlay: () => void }) {
   const summary = summarizePerformance(career.records);
   const best = personalBest(career.records, BEST_KEY);
+  const pipelineBest = personalBest(career.records, PIPELINE_BEST_KEY);
   const recent = recentResults(career.records, 5);
 
   const stats: ReadonlyArray<[label: string, value: string, detail?: string]> = [
     ["Rounds completed", formatNumber(summary.gamesPlayed)],
-    ["Errors fixed", formatNumber(summary.totalErrorsFixed), summary.totalErrors ? `of ${formatNumber(summary.totalErrors)}` : undefined],
     [
-      "Personal best",
+      "Best · Reconciliation Rush",
       best ? formatNumber(best.score) : "—",
       best ? `of ${formatNumber(best.maxScore)} · ${formatPercent(scoreShare(best))}` : undefined,
+    ],
+    [
+      "Best · Pipeline Panic",
+      pipelineBest ? formatNumber(pipelineBest.score) : "—",
+      pipelineBest ? `of ${formatNumber(pipelineBest.maxScore)} · ${formatPercent(scoreShare(pipelineBest))}` : undefined,
     ],
     ["Avg. accuracy", percentOrDash(summary.averageAccuracy)],
   ];
@@ -83,8 +98,8 @@ export function PerformanceRecord({ career, onPlay }: { career: CareerState; onP
       title="Performance record"
       description={
         career.source === "cloud"
-          ? "Reconciliation Rush · Verified results · Cloud account"
-          : "Reconciliation Rush · Guest practice · Saved in this browser only"
+          ? "All games · Verified results · Cloud account"
+          : "All games · Guest practice · Saved in this browser only"
       }
       actions={<Badge tone="gold">{formatNumber(summary.totalXp)} XP earned</Badge>}
     >
@@ -132,13 +147,13 @@ export function PerformanceRecord({ career, onPlay }: { career: CareerState; onP
                   <li key={record.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2 text-xs">
                     <span className="w-24 shrink-0 text-fg-subtle tabular-nums">{timestampFormat.format(new Date(record.completedAt))}</span>
                     <span className="min-w-0 flex-1 truncate">
-                      {record.department} · <span className="text-fg-muted">{record.grade}</span>
+                      {GAME_TITLES[record.gameId]} · {record.department} · <span className="text-fg-muted">{record.grade}</span>
                     </span>
                     <span className="tabular-nums">
                       {formatNumber(record.score)} / {formatNumber(record.maxScore)}
                     </span>
                     <span className="text-fg-subtle tabular-nums">
-                      {record.errorsFixed}/{record.totalErrors} fixed
+                      {record.errorsFixed}/{record.totalErrors} {record.gameId === "pipeline-panic" ? "correct" : "fixed"}
                     </span>
                     {record.completion === "timedOut" && <Badge tone="warning">Timed out</Badge>}
                     {record.assistanceUsed && <Badge tone="accent">Assisted</Badge>}

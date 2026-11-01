@@ -1,8 +1,9 @@
-import { BriefcaseIcon, BuildingIcon, GridIcon, IdBadgeIcon, LadderIcon, TrophyIcon } from "@/components/icons";
+import { BriefcaseIcon, BuildingIcon, FunnelIcon, GridIcon, IdBadgeIcon, LadderIcon, TrophyIcon } from "@/components/icons";
 import { APP_IDS, type AppId } from "@/types/app";
 import { CareerApp } from "./career/career-app";
 import { CompanyApp } from "./company/company-app";
 import { DepartmentsApp } from "./departments/departments-app";
+import { PipelinePanicApp } from "./pipeline-panic/pipeline-panic-app";
 import { LeaderboardApp } from "./leaderboard/leaderboard-app";
 import { ProfileApp } from "./profile/profile-app";
 import { SpreadsheetWarsApp } from "./spreadsheet-wars/spreadsheet-wars-app";
@@ -18,6 +19,16 @@ const APP_REGISTRY: Record<AppId, AppDefinition> = {
     // The spreadsheet is the main event: open at ~80% of the workspace.
     window: { initial: { fraction: 0.8 }, min: { width: 640, height: 420 } },
     component: SpreadsheetWarsApp,
+  },
+  "pipeline-panic": {
+    id: "pipeline-panic",
+    title: "Pipeline Panic",
+    description: "Sales: triage the end-of-quarter pipeline before the clock runs out.",
+    icon: FunnelIcon,
+    tint: "from-amber-400 to-orange-700",
+    // Like Spreadsheet Wars: the CRM needs room.
+    window: { initial: { fraction: 0.8 }, min: { width: 600, height: 420 } },
+    component: PipelinePanicApp,
   },
   career: {
     id: "career",

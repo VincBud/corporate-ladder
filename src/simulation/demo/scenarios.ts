@@ -62,7 +62,7 @@ const HOME_GAMES: Readonly<Record<DepartmentId, string>> = {
   finance: "expense-report-speedrun",
   controlling: "reconciliation-rush",
   people: "inbox-simulator",
-  sales: "pipeline-triage",
+  sales: "pipeline-panic",
   operations: "supply-chain-shuffle",
   it: "ticket-queue",
   marketing: "campaign-calendar",

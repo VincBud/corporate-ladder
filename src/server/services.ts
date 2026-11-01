@@ -3,10 +3,12 @@ import { getSupabaseAdminClient } from "@/lib/supabase/admin";
 import { createRpcRoundStore, type RpcCall } from "./rounds/round-store";
 import { createVerifiedRoundService, type VerifiedRoundService } from "./rounds/service";
 import { createCompanyService, type CompanyService } from "./company/service";
+import { createPipelineRoundService, type PipelineRoundService } from "./pipeline/service";
 
 let rpc: RpcCall | null = null;
 let roundService: VerifiedRoundService | null = null;
 let companyService: CompanyService | null = null;
+let pipelineService: PipelineRoundService | null = null;
 
 /** Service-role RPC into the trusted SQL functions. Null when the server isn't configured. */
 export function getTrustedRpc(): RpcCall | null {
@@ -38,4 +40,13 @@ export function getCompanyService(): CompanyService | null {
     companyService = createCompanyService({ rpc: call });
   }
   return companyService;
+}
+
+export function getPipelineService(): PipelineRoundService | null {
+  if (!pipelineService) {
+    const call = getTrustedRpc();
+    if (!call) return null;
+    pipelineService = createPipelineRoundService({ store: createRpcRoundStore(call) });
+  }
+  return pipelineService;
 }

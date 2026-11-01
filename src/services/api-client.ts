@@ -5,6 +5,8 @@
 import type { PlayerEntries } from "@/games/spreadsheet-wars/reconciliation-rush/validate";
 import type { CareerResponse, CloudProfile, ImportResponse } from "@/types/cloud-career";
 import type { SelectDepartmentResponse } from "@/types/department-career";
+import type { PipelineDecisions } from "@/games/pipeline-panic/types";
+import type { PipelineHintResponse, StartPipelineResponse, SubmitPipelineResponse } from "@/types/pipeline-play";
 import type { GameResultRecord } from "@/types/progression";
 import type { ApiErrorBody, HintResponse, StartRoundResponse, SubmitRoundResponse } from "@/types/verified-play";
 
@@ -43,6 +45,11 @@ export const api = {
   startRound: () => post<StartRoundResponse>("/api/rounds", {}),
   requestHint: (sessionId: string, entries: PlayerEntries) => post<HintResponse>(`/api/rounds/${sessionId}/hint`, { entries }),
   submitRound: (sessionId: string, entries: PlayerEntries) => post<SubmitRoundResponse>(`/api/rounds/${sessionId}/submit`, { entries }),
+  startPipeline: () => post<StartPipelineResponse>("/api/pipeline/rounds", {}),
+  requestPipelineHint: (sessionId: string, decisions: PipelineDecisions) =>
+    post<PipelineHintResponse>(`/api/pipeline/rounds/${sessionId}/hint`, { decisions }),
+  submitPipeline: (sessionId: string, decisions: PipelineDecisions) =>
+    post<SubmitPipelineResponse>(`/api/pipeline/rounds/${sessionId}/submit`, { decisions }),
   career: () => request<CareerResponse>("/api/career"),
   /** Public company snapshot; validate with parseCompanySnapshot (see company-source.ts). */
   company: () => request<unknown>("/api/company"),

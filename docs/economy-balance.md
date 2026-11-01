@@ -2,6 +2,8 @@
 
 Status: **analysis and proposal for review. The production formulas are unchanged.**
 
+> Computed with Reconciliation Rush as the only live game (`AUDIT_RULES` in `balance.ts`). Since Pipeline Panic, Sales is measured too: the ceiling is higher (+6% revenue from Sales) and the scenarios should be rerun before the proposal is adopted.
+
 Every number here comes from the real engine (`computeQuarter`) via `src/simulation/balance.ts`. `src/simulation/balance.test.ts` pins down the current behavior and the proposal's properties. All money is fictional CorpBucks (CB) per quarter.
 
 ## Current model (production)

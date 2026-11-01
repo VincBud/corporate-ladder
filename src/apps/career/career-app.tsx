@@ -17,6 +17,7 @@ const LADDER_TOP_DOWN = [...RANKS].reverse();
 
 const XP_SOURCES = [
   { label: "Reconciliation Rush", detail: "1 XP per 20 points scored. Each case pays once.", live: true },
+  { label: "Pipeline Panic", detail: "1 XP per 20 points scored. Each pipeline pays once.", live: true },
   { label: "Spreadsheet Wars duels", detail: "Win duels, climb faster.", live: false },
   { label: "Daily challenges", detail: "Short tasks, every weekday.", live: false },
   { label: "Achievements", detail: "One-time bonuses for questionable feats.", live: false },

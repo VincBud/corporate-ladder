@@ -1,5 +1,5 @@
 /** Minigames that can produce results. Extend this union when a new game ships. */
-export const GAME_IDS = ["reconciliation-rush"] as const;
+export const GAME_IDS = ["reconciliation-rush", "pipeline-panic"] as const;
 export type GameId = (typeof GAME_IDS)[number];
 
 export type CompletionType = "submitted" | "timedOut";

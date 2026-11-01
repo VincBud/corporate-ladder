@@ -53,8 +53,8 @@ Positions are **derived** from verified data every time; none are stored or gran
 - **Entry:** every new member starts at position 0.
 - **Positions 1 and 2:** earned with 3 and 10 **qualifying verified rounds** of a live game that feeds the department's metrics, completed while a member of that department.
   - **Qualifying:** submitted in time, at least 80% of discrepancies fixed. Each puzzle seed counts once.
-  - **Which game feeds which department** comes from the contribution configuration. Reconciliation Rush feeds Controlling and Finance, so today only those two departments can progress.
-- **No live game yet** (Human Resources, Sales, Operations, IT, Marketing, Legal, Corporate Strategy): the department stays at its entry position, and the track shows the planned games. Global Corporate XP never grants department titles.
+  - **Which game feeds which department** comes from the contribution configuration. Reconciliation Rush feeds Controlling and Finance, and Pipeline Panic feeds Sales, so those three departments can progress today.
+- **No live game yet** (Human Resources, Operations, IT, Marketing, Legal, Corporate Strategy): the department stays at its entry position, and the track shows the planned games. Global Corporate XP never grants department titles.
 - **Positions 3 and up:** require Quarterly Performance Reviews, which aren't implemented. The track says so.
 - **Why Reconciliation Rush can count:** it uses only server-verified results the player already owns. It doesn't create a second XP economy and doesn't touch contribution or XP.
 

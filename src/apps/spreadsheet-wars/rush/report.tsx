@@ -114,7 +114,11 @@ export function TaskPerformanceReport({ round, onPlayAgain, onReview, onLobby, c
         </div>
       </section>
 
-      <CareerResult round={round} />
+      <CareerResult
+        sessionId={round.sessionId}
+        verified={round.mode === "verified"}
+        onRetry={() => void getCareerStore().recordResult(round.sessionId, toGameResult(round, new Date()))}
+      />
 
       {companyContribution && (
         <section
@@ -187,9 +191,9 @@ export function TaskPerformanceReport({ round, onPlayAgain, onReview, onLobby, c
   );
 }
 
-/** Shows what the career system actually recorded. Never claims XP that wasn't saved. */
-function CareerResult({ round }: { round: FinishedRound }) {
-  const outcome = useCareerSession(round.sessionId);
+/** Shows what the career system actually recorded. Never claims XP that wasn't saved. Shared by every game. */
+export function CareerResult({ sessionId, verified, onRetry }: { sessionId: string; verified: boolean; onRetry: () => void }) {
+  const outcome = useCareerSession(sessionId);
 
   if (!outcome || outcome.status === "saving") {
     return (
@@ -207,7 +211,7 @@ function CareerResult({ round }: { round: FinishedRound }) {
         </p>
         <button
           type="button"
-          onClick={() => void getCareerStore().recordResult(round.sessionId, toGameResult(round, new Date()))}
+          onClick={onRetry}
           className="rounded-md bg-white/8 px-2.5 py-1 font-medium text-fg ring-1 ring-line transition-colors ring-inset hover:bg-white/12"
         >
           Try again
@@ -224,7 +228,7 @@ function CareerResult({ round }: { round: FinishedRound }) {
         {record.xpAwarded > 0 ? (
           <>
             <span className="font-semibold text-gold">+{formatNumber(record.xpAwarded)} Corporate XP</span> added to your{" "}
-            {round.mode === "verified" ? "account" : "career"}.
+            {verified ? "account" : "career"}.
           </>
         ) : reason === "repeatCase" ? (
           "No Corporate XP: this case was already completed before. Replays don't pay twice."
@@ -244,7 +248,7 @@ function CareerResult({ round }: { round: FinishedRound }) {
         )
       )}
       <p className="mt-1 text-fg-subtle">
-        {round.mode === "verified"
+        {verified
           ? "Verified by the server and saved to your account."
           : "Saved in this browser only (guest practice)."}{" "}
         Open Corporate Career to see your progress.

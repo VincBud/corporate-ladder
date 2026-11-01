@@ -2,6 +2,9 @@
  * Economic balancing audit for the live company (see docs/economy-balance.md).
  *
  * `current` is exactly the production model (liveQuarterConditions).
+ * The audit was run with Reconciliation Rush as the only live game
+ * (AUDIT_RULES); Pipeline Panic now also feeds Sales, so rerun it with
+ * LIVE_GAME_RULES before adopting the proposal.
  * `proposed` is a PROPOSAL FOR REVIEW: nothing in production uses it. Adopting
  * it means switching buildLiveSnapshot to proposedLiveConditions and bumping
  * ECONOMY_MODEL_VERSION.
@@ -13,7 +16,7 @@
 import { CONTRIBUTION_RULES } from "./contribution";
 import { METRICS, getMetric } from "./departments";
 import { computeQuarter, type QuarterConditions, type QuarterResult } from "./economy";
-import { LIVE_GAME_RULES, type GameContributionRule } from "./games";
+import { RECONCILIATION_RUSH_RULE, type GameContributionRule } from "./games";
 import { liveQuarterConditions } from "./live";
 import { measuredMetrics } from "./simulate";
 import { DEPARTMENT_IDS, type DepartmentId, type PeriodId } from "./types";
@@ -42,6 +45,9 @@ export const PROPOSED_BALANCE = {
 
 const PERIOD: PeriodId = "2026-Q4";
 
+/** The live configuration the audit (docs/economy-balance.md) was computed for. */
+export const AUDIT_RULES: readonly GameContributionRule[] = [RECONCILIATION_RUSH_RULE];
+
 /**
  * PROPOSAL: targets follow where live gameplay actually lands. Each
  * department's target = max(registered, floor) × pointsPerEmployee × its share
@@ -53,7 +59,7 @@ const PERIOD: PeriodId = "2026-Q4";
 export function proposedLiveConditions(
   periodId: PeriodId,
   registered: number,
-  { rules = LIVE_GAME_RULES, workforceBasis = registered }: { rules?: readonly GameContributionRule[]; workforceBasis?: number } = {},
+  { rules = AUDIT_RULES, workforceBasis = registered }: { rules?: readonly GameContributionRule[]; workforceBasis?: number } = {},
 ): QuarterConditions {
   const workforce = Math.max(workforceBasis, PROPOSED_BALANCE.workforceFloor);
   const share = Object.fromEntries(DEPARTMENT_IDS.map((id) => [id, 0])) as Record<DepartmentId, number>;
@@ -76,8 +82,8 @@ export function evaluateScenario({ registered, active, pointsPerActive }: LiveSc
   const points = Math.min(Math.max(pointsPerActive, 0), CONTRIBUTION_RULES.playerHardCap);
   const total = active * points;
   const byMetric: Record<string, number> = {};
-  for (const rule of LIVE_GAME_RULES) {
-    for (const [metric, weight] of Object.entries(rule.metricWeights)) byMetric[metric] = (byMetric[metric] ?? 0) + (total * weight) / LIVE_GAME_RULES.length;
+  for (const rule of AUDIT_RULES) {
+    for (const [metric, weight] of Object.entries(rule.metricWeights)) byMetric[metric] = (byMetric[metric] ?? 0) + (total * weight) / AUDIT_RULES.length;
   }
   const conditions =
     model === "current"
@@ -86,7 +92,7 @@ export function evaluateScenario({ registered, active, pointsPerActive }: LiveSc
   return computeQuarter(
     conditions,
     { periodId: PERIOD, accepted: [], rejected: [], byMetric, totalRaw: total, totalCredited: total, activeContributors: points > 0 ? active : 0 },
-    measuredMetrics(LIVE_GAME_RULES),
+    measuredMetrics(AUDIT_RULES),
   );
 }
 

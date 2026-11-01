@@ -63,10 +63,10 @@ describe("computeQuarter", () => {
   });
 
   it("marks departments without a supporting game as not measured", () => {
-    const q = computeQuarter(conditions(), contributionsWith({ "ledger-integrity": 1200, "close-quality": 1200 }, 14), measuredMetrics(LIVE_GAME_RULES));
+    const q = computeQuarter(conditions(), contributionsWith({ "ledger-integrity": 1200, "close-quality": 1200, "pipeline-health": 1200 }, 14), measuredMetrics(LIVE_GAME_RULES));
     const measured = q.departments.filter((d) => d.measured).map((d) => d.departmentId);
-    expect(measured.sort()).toEqual(["controlling", "finance"]);
-    expect(q.departments.find((d) => d.departmentId === "sales")).toMatchObject({ attainment: null, status: "notMeasured", revenueImpact: 0 });
+    expect(measured.sort()).toEqual(["controlling", "finance", "sales"]);
+    expect(q.departments.find((d) => d.departmentId === "marketing")).toMatchObject({ attainment: null, status: "notMeasured", revenueImpact: 0 });
     expect(q.balanceScore).toBe(1);
     expect(q.executionScore).toBe(1);
   });

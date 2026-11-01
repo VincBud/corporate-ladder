@@ -64,6 +64,14 @@ export function BriefcaseIcon(props: IconProps) {
   );
 }
 
+export function FunnelIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M4 5h16l-6 7.5V18l-4 1.5v-7L4 5Z" />
+    </Icon>
+  );
+}
+
 export function IdBadgeIcon(props: IconProps) {
   return (
     <Icon {...props}>

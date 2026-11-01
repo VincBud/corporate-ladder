@@ -39,6 +39,17 @@ export const RECONCILIATION_RUSH_RULE: GameContributionRule = {
   metricWeights: { "ledger-integrity": 0.7, "close-quality": 0.3 },
 };
 
+export const PIPELINE_PANIC_RULE: GameContributionRule = {
+  gameId: "pipeline-panic",
+  title: "Pipeline Panic",
+  status: "live",
+  formulaVersion: 1,
+  category: "negotiation",
+  scoringVersions: [1],
+  difficultyWeights: { associate: 1 },
+  metricWeights: { "pipeline-health": 1 },
+};
+
 const plannedRule = (
   gameId: string,
   title: string,
@@ -60,14 +71,13 @@ export const PLANNED_GAME_RULES: readonly GameContributionRule[] = [
   plannedRule("expense-report-speedrun", "Expense Report Speedrun", "expense-control", { "close-quality": 0.7, "ledger-integrity": 0.3 }),
   plannedRule("inbox-simulator", "Inbox Simulator", "people-operations", { "people-operations": 0.7, "campaign-effectiveness": 0.3 }),
   plannedRule("meeting-bingo", "Meeting Bingo", "communication", { "pipeline-health": 0.6, "people-operations": 0.4 }),
-  plannedRule("pipeline-triage", "Pipeline Triage", "negotiation", { "pipeline-health": 0.8, "campaign-effectiveness": 0.2 }),
   plannedRule("supply-chain-shuffle", "Supply Chain Shuffle", "logistics", { "fulfilment-reliability": 0.8, "close-quality": 0.2 }),
   plannedRule("ticket-queue", "Ticket Queue", "troubleshooting", { "service-reliability": 0.8, "fulfilment-reliability": 0.2 }),
   plannedRule("campaign-calendar", "Campaign Calendar", "campaign-planning", { "campaign-effectiveness": 0.8, "pipeline-health": 0.2 }),
 ];
 
 /** Games whose verified results can count toward the real company. */
-export const LIVE_GAME_RULES: readonly GameContributionRule[] = [RECONCILIATION_RUSH_RULE];
+export const LIVE_GAME_RULES: readonly GameContributionRule[] = [RECONCILIATION_RUSH_RULE, PIPELINE_PANIC_RULE];
 
 /** Live games plus planned ones, for the preview only. */
 export const PREVIEW_GAME_RULES: readonly GameContributionRule[] = [...LIVE_GAME_RULES, ...PLANNED_GAME_RULES];

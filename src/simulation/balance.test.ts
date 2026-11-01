@@ -7,6 +7,7 @@
 import { describe, expect, it } from "vitest";
 import { evaluateScenario, maximumSwing, proposedLiveConditions, type BalanceModel, type LiveScenario } from "./balance";
 import { buildLiveSnapshot, liveQuarterConditions } from "./live";
+import { LIVE_ALLOCATIONS } from "./test-fixtures";
 
 const profit = (s: LiveScenario, model: BalanceModel = "current") => evaluateScenario(s, model).operatingProfit;
 const attainment = (s: LiveScenario, department: string, model: BalanceModel = "current") =>
@@ -81,10 +82,7 @@ describe("current behavior (production)", () => {
           department_id: null,
         },
       ],
-      allocations: [
-        { game_id: "reconciliation-rush", formula_version: 1, metric_id: "ledger-integrity", department_id: "controlling", weight_bp: 7000 },
-        { game_id: "reconciliation-rush", formula_version: 1, metric_id: "close-quality", department_id: "finance", weight_bp: 3000 },
-      ],
+      allocations: LIVE_ALLOCATIONS,
       lastContributionAt: null,
     });
     expect(snapshot.financials.operatingProfit).toBe(profit({ registered: 1, active: 1, pointsPerActive: 100 }));

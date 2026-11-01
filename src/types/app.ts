@@ -1,5 +1,6 @@
 export const APP_IDS = [
   "spreadsheet-wars",
+  "pipeline-panic",
   "career",
   "leaderboard",
   "profile",

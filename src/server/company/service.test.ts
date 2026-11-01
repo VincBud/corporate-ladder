@@ -77,7 +77,8 @@ describe("live company snapshot", () => {
     expect(snapshot.financials.revenue).toBeGreaterThan(snapshot.baseline.revenue);
     expect(snapshot.impact.costSavings).toBeGreaterThan(0);
     expect(snapshot.departments.find((d) => d.id === "controlling")!.measured).toBe(true);
-    expect(snapshot.departments.find((d) => d.id === "sales")!.measured).toBe(false);
+    expect(snapshot.departments.find((d) => d.id === "sales")!.measured).toBe(true);
+    expect(snapshot.departments.find((d) => d.id === "marketing")!.measured).toBe(false);
     expect(parseCompanySnapshot(JSON.parse(JSON.stringify(snapshot)))).not.toBeNull();
 
     // The quarter and timestamps come from the database clock.

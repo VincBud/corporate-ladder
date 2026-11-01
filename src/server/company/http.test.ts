@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { buildLiveSnapshot } from "@/simulation/live";
+import { LIVE_ALLOCATIONS } from "@/simulation/test-fixtures";
 import { handleCompanyRequest } from "./http";
 import { CompanyUnavailableError, type CompanyService } from "./service";
 
@@ -9,10 +10,7 @@ const { snapshot } = buildLiveSnapshot({
   registeredEmployees: 0,
   membership: [],
   events: [],
-  allocations: [
-    { game_id: "reconciliation-rush", formula_version: 1, metric_id: "ledger-integrity", department_id: "controlling", weight_bp: 7000 },
-    { game_id: "reconciliation-rush", formula_version: 1, metric_id: "close-quality", department_id: "finance", weight_bp: 3000 },
-  ],
+  allocations: LIVE_ALLOCATIONS,
   lastContributionAt: null,
 });
 

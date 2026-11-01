@@ -7,7 +7,7 @@ import {
   parseCompanySnapshot,
   type ContributionEventRow,
 } from "./source";
-import { liveAggregate } from "./test-fixtures";
+import { LIVE_ALLOCATIONS, liveAggregate } from "./test-fixtures";
 
 const record: GameResultRecord = {
   id: "session-1",
@@ -107,10 +107,7 @@ describe("parseCompanySnapshot", () => {
     registeredEmployees: 2,
     membership: [{ departmentId: null, members: 2 }],
     events: [],
-    allocations: [
-      { game_id: "reconciliation-rush", formula_version: 1, metric_id: "ledger-integrity", department_id: "controlling", weight_bp: 7000 },
-      { game_id: "reconciliation-rush", formula_version: 1, metric_id: "close-quality", department_id: "finance", weight_bp: 3000 },
-    ],
+    allocations: LIVE_ALLOCATIONS,
     lastContributionAt: null,
   });
   const valid = JSON.parse(JSON.stringify(snapshot));

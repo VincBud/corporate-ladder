@@ -48,7 +48,7 @@ export interface CareerStore {
   recordResult: (sessionId: string, input: GameResultInput) => Promise<SessionOutcome>;
   dismissPromotion: () => void;
   /** Cloud: shows a result the server verified and recorded (no local write). */
-  applyVerifiedResult: (sessionId: string, response: SubmitRoundResponse) => void;
+  applyVerifiedResult: (sessionId: string, response: Pick<SubmitRoundResponse, "record" | "totalXp" | "created">) => void;
 }
 
 export const INITIAL_CAREER_STATE: CareerState = {

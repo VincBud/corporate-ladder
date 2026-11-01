@@ -72,7 +72,8 @@ describe("progression policy", () => {
   it("lets only departments with a live game earn positions through play", () => {
     expect(progressionGames("controlling").map((g) => g.gameId)).toEqual(["reconciliation-rush"]);
     expect(progressionGames("finance").map((g) => g.gameId)).toEqual(["reconciliation-rush"]);
-    for (const id of ["people", "sales", "operations", "it", "marketing", "legal", "strategy"]) expect(progressionGames(id)).toEqual([]);
+    expect(progressionGames("sales").map((g) => g.gameId)).toEqual(["pipeline-panic"]);
+    for (const id of ["people", "operations", "it", "marketing", "legal", "strategy"]) expect(progressionGames(id)).toEqual([]);
   });
 
   it("requires 3 and 10 qualifying rounds for tiers 1 and 2, and a Quarterly Performance Review above", () => {
@@ -80,7 +81,8 @@ describe("progression policy", () => {
     expect(requirementFor("controlling", 1)).toMatchObject({ kind: "verifiedRounds", rounds: 3 });
     expect(requirementFor("controlling", 2)).toMatchObject({ kind: "verifiedRounds", rounds: 10 });
     expect(requirementFor("controlling", 3)).toEqual({ kind: "performanceReview" });
-    expect(requirementFor("sales", 1)).toEqual({ kind: "departmentGameplay", plannedGames: ["Meeting Bingo", "Pipeline Triage", "Campaign Calendar"] });
+    expect(requirementFor("sales", 1)).toEqual({ kind: "verifiedRounds", rounds: 3, games: ["Pipeline Panic"] });
+    expect(requirementFor("marketing", 1)).toEqual({ kind: "departmentGameplay", plannedGames: ["Inbox Simulator", "Campaign Calendar"] });
     expect(requirementFor("legal", 1, ["Contract Redline"])).toEqual({ kind: "departmentGameplay", plannedGames: ["Contract Redline"] });
   });
 
@@ -100,7 +102,7 @@ describe("progression policy", () => {
 
   it("never promotes departments without relevant gameplay, however much XP the player has", () => {
     const many = Array.from({ length: 50 }, () => round({ xpAwarded: 1_000 }));
-    for (const id of ["sales", "people", "legal", "strategy"] as const) {
+    for (const id of ["marketing", "people", "legal", "strategy"] as const) {
       expect(departmentProgress(id, [since(id)], many)).toMatchObject({ positionIndex: 0, next: { index: 1, requirement: { kind: "departmentGameplay" } } });
     }
   });
@@ -138,7 +140,7 @@ describe("progression policy", () => {
       round({ errorsFixed: 3 }), // 60% < 80%
       round({ seed: "RV1-same" }),
       round({ seed: "RV1-same" }),
-      round({ gameId: "pipeline-triage" as GameResultRecord["gameId"] }),
+      round({ gameId: "pipeline-panic" }),
       round({ errorsFixed: 4 }), // exactly 80%
     ];
     expect(qualifyingRounds("controlling", [since("controlling")], rounds)).toBe(2);

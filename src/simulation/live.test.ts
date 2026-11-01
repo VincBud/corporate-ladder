@@ -5,13 +5,13 @@ import { computeQuarter, type QuarterResult } from "./economy";
 import { RECONCILIATION_RUSH_RULE, type GameContributionRule } from "./games";
 import { FormulaMismatchError, LIVE_COMPANY, buildLiveSnapshot, liveQuarterConditions, suppressSmallGroups, verifyAllocations, type AllocationRow, type LiveQuarterInput } from "./live";
 import { parseCompanySnapshot, type ContributionEventRow } from "./source";
+import { LIVE_ALLOCATIONS } from "./test-fixtures";
+import { LIVE_GAME_RULES } from "./games";
+import { measuredMetrics } from "./simulate";
 
 // Seeded baseline: STAFFING_PLAN payroll (14,208,000) + overhead (2,500,000).
 const BASELINE_COSTS = 16_708_000;
-const ALLOCATIONS: AllocationRow[] = [
-  { game_id: "reconciliation-rush", formula_version: 1, metric_id: "ledger-integrity", department_id: "controlling", weight_bp: 7000 },
-  { game_id: "reconciliation-rush", formula_version: 1, metric_id: "close-quality", department_id: "finance", weight_bp: 3000 },
-];
+const ALLOCATIONS: AllocationRow[] = LIVE_ALLOCATIONS;
 
 let counter = 0;
 type Row = ContributionEventRow & { department_id: string | null };
@@ -81,9 +81,9 @@ describe("buildLiveSnapshot", () => {
     expect(snapshot.financials.operatingExpenses).toBe(snapshot.baseline.operatingExpenses);
     expect(snapshot.baseline).toEqual({ revenue: 16_000_000, operatingExpenses: BASELINE_COSTS, operatingProfit: 16_000_000 - BASELINE_COSTS });
     // Departments fed by a live game have targets (and 0% attainment); the rest aren't measured.
-    expect(snapshot.departments.filter((d) => d.measured).map((d) => d.id).sort()).toEqual(["controlling", "finance"]);
+    expect(snapshot.departments.filter((d) => d.measured).map((d) => d.id).sort()).toEqual(["controlling", "finance", "sales"]);
     expect(snapshot.departments.find((d) => d.id === "controlling")).toMatchObject({ attainment: 0, status: "critical" });
-    expect(snapshot.departments.find((d) => d.id === "sales")).toMatchObject({ measured: false, status: "notMeasured" });
+    expect(snapshot.departments.find((d) => d.id === "marketing")).toMatchObject({ measured: false, status: "notMeasured" });
   });
 
   it("computes the financials exactly with the existing engine", () => {
@@ -108,7 +108,7 @@ describe("buildLiveSnapshot", () => {
       totalRaw: 100,
       totalCredited: 100,
       activeContributors: 1,
-    }, new Set(["ledger-integrity", "close-quality"]));
+    }, measuredMetrics(LIVE_GAME_RULES));
     expect(direct.revenue).toBe(snapshot.financials.revenue);
     expect(direct.operatingExpenses).toBe(snapshot.financials.operatingExpenses);
     expect(direct.operatingEfficiency).toBe(snapshot.financials.operatingEfficiency);
@@ -132,7 +132,7 @@ describe("buildLiveSnapshot", () => {
     })).snapshot;
     expect(a.financials).toEqual(b.financials);
     expect(a.departments).toEqual(b.departments);
-    expect(a.departments.find((d) => d.id === "sales")!.measured).toBe(false);
+    expect(a.departments.find((d) => d.id === "marketing")!.measured).toBe(false);
   });
 
   it("counts each employee once, including players without a department", () => {

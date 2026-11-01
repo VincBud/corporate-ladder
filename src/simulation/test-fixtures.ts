@@ -1,5 +1,5 @@
 /** Builders for simulation tests. */
-import { METRICS } from "./departments";
+import { METRICS, getMetric } from "./departments";
 import { aggregatePeriod, type PeriodContributions } from "./contribution";
 import type { QuarterConditions } from "./economy";
 import { LIVE_GAME_RULES, PREVIEW_GAME_RULES } from "./games";
@@ -55,3 +55,14 @@ export function contributionsWith(byMetric: Record<string, number>, activeContri
   const total = Object.values(full).reduce((sum, v) => sum + v, 0);
   return { periodId, accepted: [], rejected: [], byMetric: full, totalRaw: total, totalCredited: total, activeContributors };
 }
+
+/** Published contribution allocations matching the live TypeScript rules (as the database seeds them). */
+export const LIVE_ALLOCATIONS = LIVE_GAME_RULES.flatMap((rule) =>
+  Object.entries(rule.metricWeights).map(([metric, weight]) => ({
+    game_id: rule.gameId,
+    formula_version: rule.formulaVersion,
+    metric_id: metric,
+    department_id: getMetric(metric)!.departmentId,
+    weight_bp: Math.round(weight * 10_000),
+  })),
+);

@@ -13,6 +13,9 @@ import { xpForScore } from "@/career/xp";
 import { cellKey } from "@/games/spreadsheet-wars/sheet";
 import { challengeFor } from "@/server/rounds/rules";
 import { periodOf } from "@/simulation/periods";
+import { solveRound } from "@/games/pipeline-panic/solve";
+import { pipelineRoundFor } from "@/server/pipeline/rules";
+import type { PipelineHintResponse, StartPipelineResponse, SubmitPipelineResponse } from "@/types/pipeline-play";
 import { parseCompanySnapshot, type CompanySnapshot } from "@/simulation/source";
 import type { CareerResponse } from "@/types/cloud-career";
 import type { SelectDepartmentResponse } from "@/types/department-career";
@@ -616,6 +619,116 @@ describe.skipIf(!configured || !BASE)("live: departments over HTTP", () => {
     expect((await admin!.auth.admin.deleteUser(wes.id)).error).toBeNull();
     const { count } = await admin!.from("department_memberships").select("id", { count: "exact", head: true }).eq("user_id", wes.id);
     expect(count).toBe(0);
+    const { data } = await admin!.rpc("check_progression_integrity");
+    expect(Object.values(data as Record<string, number>).every((n) => n === 0)).toBe(true);
+  });
+});
+
+async function pipelineAnswers(sessionId: string, userId: string) {
+  const { data, error } = await admin!.rpc("get_game_session", { p_session_id: sessionId, p_user_id: userId });
+  if (error) throw error;
+  const round = pipelineRoundFor(data.rules_version, data.seed);
+  return { round, decisions: Object.fromEntries(Object.entries(solveRound(round)).map(([id, r]) => [id, r.decision])) };
+}
+
+describe.skipIf(!configured || !BASE)("live: Pipeline Panic over HTTP", () => {
+  it("plays a verified round: public pipeline, server hint, verified score, XP and one Sales contribution", async () => {
+    const rep = await createUser("pp-rep");
+    const start = await api<StartPipelineResponse>(rep, "POST", "/api/pipeline/rounds");
+    expect(start.status).toBe(200);
+    const { round, decisions } = await pipelineAnswers(start.data.sessionId, rep.id);
+    expect(JSON.stringify(start.data)).not.toContain(round.seed);
+    expect(JSON.stringify(start.data)).not.toContain("scenarios");
+
+    const hint = await api<PipelineHintResponse>(rep, "POST", `/api/pipeline/rounds/${start.data.sessionId}/hint`, { decisions: {} });
+    expect(hint.data.hint.opportunityId).toBe(round.opportunities[0].id);
+
+    const submit = await api<SubmitPipelineResponse>(rep, "POST", `/api/pipeline/rounds/${start.data.sessionId}/submit`, { decisions, score: 1, xpAwarded: 9999 });
+    expect(submit.status).toBe(200);
+    expect(submit.data.record).toMatchObject({ gameId: "pipeline-panic", department: "Sales", errorsFixed: round.opportunities.length, assistanceUsed: true });
+    expect(submit.data.record.xpAwarded).toBe(xpForScore(submit.data.record.score));
+    expect(submit.data.contribution).toEqual({ recorded: true });
+    const [event] = await contributionEvents(rep.id);
+    expect(event).toMatchObject({ session_id: start.data.sessionId, formula_version: 1 });
+
+    const career = (await api<CareerResponse>(rep, "GET", "/api/career")).data;
+    expect(career.records[0]).toMatchObject({ gameId: "pipeline-panic", id: start.data.sessionId });
+    expect(career.totalXp).toBe(submit.data.record.xpAwarded);
+  });
+
+  it("never sends answers for opportunities the player didn't attempt", async () => {
+    const rep = await createUser("pp-redact");
+    const start = await api<StartPipelineResponse>(rep, "POST", "/api/pipeline/rounds");
+    const { round, decisions } = await pipelineAnswers(start.data.sessionId, rep.id);
+    const firstTwo = Object.fromEntries(Object.entries(decisions).slice(0, 2));
+    const response = await fetch(`${BASE}/api/pipeline/rounds/${start.data.sessionId}/submit`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: sessionCookie(rep.session) },
+      body: JSON.stringify({ decisions: firstTwo }),
+    });
+    const text = await response.text();
+    const body = JSON.parse(text) as SubmitPipelineResponse;
+    expect(text).not.toContain(round.seed);
+    expect(JSON.stringify(body.review)).not.toMatch(/"scenarios"|"resolution"|"difficulty"/);
+    const career = await api(rep, "GET", "/api/career");
+    expect(JSON.stringify(career.data)).not.toContain(round.seed);
+    const hidden = body.review.outcomes.filter((o) => o.kind === "undecided");
+    expect(hidden).toHaveLength(round.opportunities.length - 2);
+    for (const o of hidden) expect(Object.keys(o).sort()).toEqual(["decision", "id", "kind"]);
+    expect(body.record.xpAwarded).toBe(xpForScore(body.record.score));
+  });
+
+  it("finalizes duplicate and concurrent submissions exactly once", async () => {
+    const rep = await createUser("pp-concurrent");
+    const start = await api<StartPipelineResponse>(rep, "POST", "/api/pipeline/rounds");
+    const { decisions } = await pipelineAnswers(start.data.sessionId, rep.id);
+    const results = await Promise.all(
+      Array.from({ length: 5 }, (_, i) => api<SubmitPipelineResponse>(rep, "POST", `/api/pipeline/rounds/${start.data.sessionId}/submit`, { decisions: i % 2 ? {} : decisions })),
+    );
+    expect(results.every((r) => r.status === 200)).toBe(true);
+    expect(results.filter((r) => r.data.created)).toHaveLength(1);
+    expect(new Set(results.map((r) => JSON.stringify(r.data.record))).size).toBe(1);
+    expect(await ledgerRows(rep.id)).toBe(1);
+    expect(await contributionEvents(rep.id)).toHaveLength(1);
+  });
+
+  it("rejects tampered submissions and keeps games apart", async () => {
+    const rep = await createUser("pp-tamper");
+    const start = await api<StartPipelineResponse>(rep, "POST", "/api/pipeline/rounds");
+    const path = `/api/pipeline/rounds/${start.data.sessionId}/submit`;
+    expect((await api(rep, "POST", path, { decisions: { "opp-99": { action: "close" } } })).status).toBe(400);
+    expect((await api(rep, "POST", path, { decisions: { "opp-1": { action: "discount", discount: 12 } } })).status).toBe(400);
+    expect((await api(rep, "POST", path, { decisions: [] })).status).toBe(400);
+    // A Pipeline Panic round can't be submitted to Reconciliation Rush, nor the other way round.
+    expect((await api(rep, "POST", `/api/rounds/${start.data.sessionId}/submit`, { entries: {} })).status).toBe(404);
+    const rush = await api<StartRoundResponse>(rep, "POST", "/api/rounds");
+    expect((await api(rep, "POST", `/api/pipeline/rounds/${rush.data.sessionId}/submit`, { decisions: {} })).status).toBe(404);
+    expect(await ledgerRows(rep.id)).toBe(0);
+  });
+
+  it("enforces the deadline with server time", async () => {
+    const rep = await createUser("pp-late");
+    const start = await api<StartPipelineResponse>(rep, "POST", "/api/pipeline/rounds");
+    const { decisions } = await pipelineAnswers(start.data.sessionId, rep.id);
+    await shiftClock(start.data.sessionId, 120_000);
+    const late = await api<SubmitPipelineResponse>(rep, "POST", `/api/pipeline/rounds/${start.data.sessionId}/submit`, { decisions });
+    expect(late.data.record).toMatchObject({ completion: "timedOut", errorsFixed: 0, score: 0, xpAwarded: 0 });
+  });
+
+  it("advances the Sales career and makes Sales a measured department", async () => {
+    const rep = await createUser("pp-career");
+    await api(rep, "POST", "/api/department", { departmentId: "sales", requestId: crypto.randomUUID() });
+    for (let i = 0; i < 3; i++) {
+      const start = await api<StartPipelineResponse>(rep, "POST", "/api/pipeline/rounds");
+      const { decisions } = await pipelineAnswers(start.data.sessionId, rep.id);
+      await api(rep, "POST", `/api/pipeline/rounds/${start.data.sessionId}/submit`, { decisions });
+    }
+    const career = (await api<CareerResponse>(rep, "GET", "/api/career")).data;
+    expect(career.departmentCareer.progress[0]).toMatchObject({ departmentId: "sales", positionIndex: 1, qualifyingRounds: 3 });
+    const snapshot = await companySnapshot();
+    expect(snapshot.formulaVersions).toContainEqual({ gameId: "pipeline-panic", formulaVersion: 1 });
+    // Test accounts aren't employees; with no employees no department has a target yet.
+    expect(snapshot.departments.find((d) => d.id === "sales")!.measured).toBe(snapshot.employees.registered > 0);
     const { data } = await admin!.rpc("check_progression_integrity");
     expect(Object.values(data as Record<string, number>).every((n) => n === 0)).toBe(true);
   });

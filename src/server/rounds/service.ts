@@ -12,7 +12,7 @@
  * Server-side verification stops forged scores, times and XP. It does not
  * stop a player from getting outside help or automating play.
  */
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { NOTHING_TO_FLAG_MESSAGE, createHint, describeHint, type RoundHint } from "@/games/spreadsheet-wars/reconciliation-rush/hints";
 import { serializeChallenge, serializePublicChallenge, toPublicChallenge } from "@/games/spreadsheet-wars/reconciliation-rush/public";
 import { correctionAccuracy, gradeRound } from "@/games/spreadsheet-wars/reconciliation-rush/report";
@@ -20,7 +20,7 @@ import { RECONCILIATION_RUSH_DIFFICULTY } from "@/games/spreadsheet-wars/reconci
 import { scoreRound } from "@/games/spreadsheet-wars/reconciliation-rush/scoring";
 import type { Challenge } from "@/games/spreadsheet-wars/reconciliation-rush/types";
 import { evaluateRound, type PlayerEntries } from "@/games/spreadsheet-wars/reconciliation-rush/validate";
-import type { GameResultRecord } from "@/types/progression";
+import { GAME_IDS, type GameId, type GameResultRecord } from "@/types/progression";
 import type { HintResponse, StartRoundResponse, SubmitRoundResponse } from "@/types/verified-play";
 import { RoundError } from "./errors";
 import { parseEntries } from "./payload";
@@ -60,12 +60,23 @@ export function judgeSubmissionTiming(session: Pick<SessionRow, "startedAt" | "d
   return { completion: "timedOut", acceptEntries: now <= deadline + session.toleranceMs, elapsedMs: duration, remainingMs: 0 };
 }
 
+/**
+ * Opaque stand-in for a verified round's secret seed in records sent to the
+ * browser. The seed regenerates the whole puzzle, including answers the
+ * player never saw; the reference only allows "same puzzle" comparisons
+ * (e.g. each puzzle counts once for department careers).
+ */
+export function seedReference(seed: string): string {
+  return `ref-${createHash("sha256").update(seed).digest("hex").slice(0, 24)}`;
+}
+
 export function resultRowToRecord(row: ResultRow): GameResultRecord {
+  if (!(GAME_IDS as readonly string[]).includes(row.game_id)) throw new Error(`Unknown game in results: ${row.game_id}`);
   return {
     id: row.session_id,
-    gameId: RECONCILIATION_RUSH,
+    gameId: row.game_id as GameId,
     scoringVersion: row.rules_version,
-    seed: row.seed,
+    seed: seedReference(row.seed),
     department: row.department,
     difficulty: row.difficulty,
     completedAt: new Date(row.completed_at).toISOString(),
@@ -135,8 +146,8 @@ export function createVerifiedRoundService({
 }): VerifiedRoundService {
   async function loadOwned(userId: string, sessionId: string) {
     const session = await store.getSession(sessionId, userId);
-    // Someone else's session looks exactly like a missing one.
-    if (!session) throw new RoundError("not_found");
+    // Someone else's session, or another game's, looks exactly like a missing one.
+    if (!session || session.gameId !== RECONCILIATION_RUSH) throw new RoundError("not_found");
     return { session, challenge: challengeFor(session.rulesVersion, session.seed) };
   }
 
