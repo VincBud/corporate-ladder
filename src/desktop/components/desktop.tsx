@@ -26,6 +26,7 @@ import { DesktopIcons } from "./desktop-icons";
 import { Taskbar } from "./taskbar";
 import { AuthNoticeToast } from "./auth-notice-toast";
 import { AchievementToast } from "./achievement-toast";
+import { AppErrorBoundary } from "./app-error-boundary";
 import { dismissAchievementToast, useNextAchievementToast } from "@/achievements/toast-queue";
 import { DepartmentPrompt, useDepartmentPromptDismissed } from "./department-prompt";
 import { FeedbackSurvey } from "./feedback-survey";
@@ -306,12 +307,14 @@ export function Desktop({ employee: baseEmployee }: { employee: Employee }) {
               onMove={(position) => dispatch({ type: "move", appId: win.appId, position })}
               onResize={(rect) => dispatch({ type: "resize", appId: win.appId, rect })}
             >
-              <AppComponent
-                employee={employee}
-                openApp={openApp}
-                setCloseWarning={(message) => setCloseWarning(win.appId, message)}
-                setInFlow={(active) => setInFlow(win.appId, active)}
-              />
+              <AppErrorBoundary appTitle={app.title}>
+                <AppComponent
+                  employee={employee}
+                  openApp={openApp}
+                  setCloseWarning={(message) => setCloseWarning(win.appId, message)}
+                  setInFlow={(active) => setInFlow(win.appId, active)}
+                />
+              </AppErrorBoundary>
             </WindowFrame>
           );
         })}

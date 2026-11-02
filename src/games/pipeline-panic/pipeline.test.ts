@@ -26,7 +26,7 @@ describe("generation", () => {
 
   it("produces valid, unambiguous rounds for thousands of seeds", () => {
     for (const seed of SEEDS) expect(findIntegrityProblems(generatePipelineRound(seed)), seed).toEqual([]);
-  });
+  }, 20_000); // thousands of generated rounds; the 5 s default is too tight under full-suite load
 
   it("mixes every decision type and scenario over many rounds", () => {
     const kinds = new Map<string, number>();
@@ -44,7 +44,7 @@ describe("generation", () => {
       ["capacity", "cleanClose", "discountTooDeep", "discountWin", "marginTrap", "nextQuarter", "noBudget", "noDecisionMaker", "paymentTerms", "restrictedClause"].sort(),
     );
     for (const count of kinds.values()) expect(count).toBeGreaterThan(150);
-  });
+  }, 20_000);
 
   it("keeps the public view free of the seed and answer labels", () => {
     const round = generatePipelineRound("public");

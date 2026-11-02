@@ -167,6 +167,12 @@ Remaining trust boundary: the `postgres` role (migrations, dashboard SQL editor)
 
 Every new table gets Supabase's broad default grants. `server/security.test.ts` checks every table, column, sequence and function privilege against an allowlist, so a migration that forgets to revoke fails the tests.
 
+## HTTP hardening
+
+- **Security headers** (`next.config.ts`): `frame-ancestors 'none'` and `X-Frame-Options: DENY` (no framing), `nosniff`, a strict Referrer-Policy, a Permissions-Policy, and HSTS over HTTPS. `X-Powered-By` is off. There's no `script-src` CSP yet, because Next's inline scripts would need nonces.
+- **Cross-site writes** (`src/proxy.ts`, `src/lib/same-origin.ts`): `POST`, `PUT`, `PATCH` and `DELETE` to `/api/*` get 403 when `Origin` doesn't match the host, or when `Sec-Fetch-Site` is `cross-site` or `same-site`. This is defense in depth on top of `SameSite=Lax` session cookies.
+- **Crash containment:** each app window has an error boundary (`app-error-boundary.tsx`), so one failing app can't blank the desktop.
+
 ## Live company
 
 `GET /api/company` publishes the shared company for the current UTC quarter (migration `20261031130000_live_company.sql`, server `src/server/company/`, model `src/simulation/live.ts`).

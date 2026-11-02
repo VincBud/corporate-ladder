@@ -1,13 +1,27 @@
 import { createServerClient } from "@supabase/ssr";
 import { type NextRequest, NextResponse } from "next/server";
+import { isCrossSiteWrite } from "@/lib/same-origin";
 import { getSupabasePublicConfig } from "@/lib/supabase/config";
 
 /**
- * Keeps Supabase sessions fresh: refreshes expiring auth tokens and writes the
- * updated cookies to the response. A pass-through when Supabase isn't
- * configured. Authorization happens in the route handlers, not here.
+ * Rejects cross-site writes to the API, and keeps Supabase sessions fresh:
+ * refreshes expiring auth tokens and writes the updated cookies to the
+ * response. Authorization happens in the route handlers, not here.
  */
 export async function proxy(request: NextRequest) {
+  // State-changing API calls must come from this site (CSRF defense in depth).
+  if (
+    request.nextUrl.pathname.startsWith("/api/") &&
+    isCrossSiteWrite({
+      method: request.method,
+      origin: request.headers.get("origin"),
+      host: request.headers.get("host"),
+      secFetchSite: request.headers.get("sec-fetch-site"),
+    })
+  ) {
+    return NextResponse.json({ error: { code: "cross_site_request", message: "Cross-site requests are not allowed." } }, { status: 403 });
+  }
+
   const config = getSupabasePublicConfig();
   if (!config) return NextResponse.next();
 
