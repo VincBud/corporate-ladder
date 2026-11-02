@@ -1,6 +1,7 @@
 "use client";
 
-import { useId, useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useId, useState, type FormEvent, type ReactNode } from "react";
+import { looksLikeInviteCode } from "@/alpha/invite-format";
 import { MIN_PASSWORD_LENGTH, type AuthResult } from "@/auth/auth-store";
 import { getAuthStore, useAuth } from "@/auth/use-auth";
 import { Badge } from "@/components/ui/badge";
@@ -63,15 +64,52 @@ function SignedOut() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [displayName, setDisplayName] = useState("");
+  const [inviteCode, setInviteCode] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [awaitingConfirmation, setAwaitingConfirmation] = useState(false);
+  // Closed alpha: whether new accounts need an invitation (asked once; the database enforces it either way).
+  const [inviteRequired, setInviteRequired] = useState(false);
   const { pending, feedback, run, setFeedback } = useAction();
   const auth = getAuthStore();
+
+  useEffect(() => {
+    let cancelled = false;
+    api.alphaAccess().then(
+      (access) => {
+        if (!cancelled) setInviteRequired(access.inviteRequired);
+      },
+      () => {
+        // Unknown: the field stays hidden; a refused sign-up still explains the invitation.
+      },
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  async function register(): Promise<AuthResult> {
+    if (inviteRequired && !looksLikeInviteCode(inviteCode)) {
+      return { ok: false, message: "Enter the invitation code from your invitation, e.g. CL-7K2M-9QXA-4T0B." };
+    }
+    if (password.length < MIN_PASSWORD_LENGTH) return { ok: false, message: `Use at least ${MIN_PASSWORD_LENGTH} characters for your password.` };
+    if (password !== confirmPassword) return { ok: false, message: "The passwords don't match." };
+    if (inviteRequired) {
+      try {
+        if (!(await api.checkInvitation(inviteCode)).valid) {
+          return { ok: false, message: "This invitation code isn't valid or has already been used. Check it, or ask for a new one." };
+        }
+      } catch (error) {
+        return { ok: false, message: error instanceof Error ? error.message : "Couldn't check the invitation. Please try again." };
+      }
+    }
+    return auth.signUp(email, password, displayName, inviteRequired ? inviteCode : undefined);
+  }
 
   async function submit(event: FormEvent) {
     event.preventDefault();
     if (tab === "signIn") await run(() => auth.signIn(email, password));
     if (tab === "signUp") {
-      const result = await run(() => auth.signUp(email, password, displayName));
+      const result = await run(register);
       if (result.ok) setAwaitingConfirmation(true);
     }
     if (tab === "reset") await run(() => auth.requestPasswordReset(email));
@@ -106,6 +144,24 @@ function SignedOut() {
         ))}
       </div>
       <form onSubmit={submit} className="grid max-w-sm gap-3" noValidate>
+        {tab === "signUp" && inviteRequired && (
+          <Field label="Invitation code" hint="Closed alpha: from your invitation. Each code creates one account.">
+            {(id) => (
+              <input
+                id={id}
+                className={cn(inputClass, "font-mono tracking-wider uppercase")}
+                value={inviteCode}
+                onChange={(e) => setInviteCode(e.target.value)}
+                placeholder="CL-XXXX-XXXX-XXXX"
+                autoComplete="off"
+                autoCapitalize="characters"
+                spellCheck={false}
+                maxLength={24}
+                required
+              />
+            )}
+          </Field>
+        )}
         {tab === "signUp" && (
           <Field label="Display name" hint="2–40 characters. You can change it later.">
             {(id) => <input id={id} className={inputClass} value={displayName} onChange={(e) => setDisplayName(e.target.value)} autoComplete="nickname" maxLength={40} required />}
@@ -124,6 +180,21 @@ function SignedOut() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 autoComplete={tab === "signUp" ? "new-password" : "current-password"}
+                required
+              />
+            )}
+          </Field>
+        )}
+        {tab === "signUp" && (
+          <Field label="Confirm password">
+            {(id) => (
+              <input
+                id={id}
+                type="password"
+                className={inputClass}
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                autoComplete="new-password"
                 required
               />
             )}

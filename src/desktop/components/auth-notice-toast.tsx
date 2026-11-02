@@ -8,6 +8,7 @@ const COPY: Record<AuthNotice, { title: string; body: string; action?: string }>
   recovery: { title: "Choose a new password", body: "Your reset link worked. Set a new password in Employee Profile.", action: "Open Employee Profile" },
   error: { title: "That link didn't work", body: "It may have expired or already been used. Request a new one from Employee Profile.", action: "Open Employee Profile" },
   unavailable: { title: "Accounts unavailable", body: "Cloud accounts aren't configured on this server. Guest play still works." },
+  passwordUpdated: { title: "Password updated", body: "You're signed in. Use the new password the next time you sign in." },
 };
 
 /** Result of following a link from a sign-up or password-reset email. */

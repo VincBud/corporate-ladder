@@ -8,7 +8,8 @@
 
 export type AuthStatus = "disabled" | "loading" | "signedOut" | "signedIn";
 /** One-off messages from email links (see app/auth/confirm). */
-export type AuthNotice = "confirmed" | "recovery" | "error" | "unavailable";
+/** "passwordUpdated" is set by the app itself, never read from a link. */
+export type AuthNotice = "confirmed" | "recovery" | "error" | "unavailable" | "passwordUpdated";
 
 export interface AuthUser {
   id: string;
@@ -50,7 +51,8 @@ export interface AuthStore {
   getState(): AuthState;
   subscribe(listener: () => void): () => void;
   signIn(email: string, password: string): Promise<AuthResult>;
-  signUp(email: string, password: string, displayName: string): Promise<AuthResult>;
+  /** inviteCode: closed alpha invitation, enforced by the database when the account is created. */
+  signUp(email: string, password: string, displayName: string, inviteCode?: string): Promise<AuthResult>;
   signOut(): Promise<AuthResult>;
   requestPasswordReset(email: string): Promise<AuthResult>;
   updatePassword(password: string): Promise<AuthResult>;
@@ -126,7 +128,7 @@ export function createAuthStore(
       return error ? { ok: false, message: friendly(error, "Sign-in failed. Please try again.") } : { ok: true };
     },
 
-    async signUp(email, password, displayName) {
+    async signUp(email, password, displayName, inviteCode) {
       if (!client) return unavailable;
       if (!EMAIL_PATTERN.test(email.trim())) return invalidEmail;
       if (password.length < MIN_PASSWORD_LENGTH) return { ok: false, message: `Use at least ${MIN_PASSWORD_LENGTH} characters for your password.` };
@@ -135,12 +137,23 @@ export function createAuthStore(
       const { data, error } = await client.signUp({
         email: email.trim(),
         password,
-        options: { emailRedirectTo: redirect("/auth/confirm"), data: { display_name: name } },
+        options: {
+          emailRedirectTo: redirect("/auth/confirm"),
+          // Checked and removed by the database before the account exists.
+          data: inviteCode ? { display_name: name, alpha_invite: inviteCode.trim() } : { display_name: name },
+        },
       });
-      if (error) return { ok: false, message: friendly(error, "Couldn't create the account. Please try again.") };
-      return data.session
-        ? { ok: true, message: "Welcome aboard. Your account is ready." }
-        : { ok: true, message: "Check your inbox and confirm your email address to finish signing up." };
+      const checkInbox: AuthResult = { ok: true, message: "Check your inbox and confirm your email address to finish signing up." };
+      if (error) {
+        // The same answer as a new sign-up: never reveal whether an address already has an account.
+        if (/already registered|already exists/i.test(error.message)) return checkInbox;
+        // The database refused to create the account: the invitation is missing, used, expired or revoked.
+        if (/database error|alpha_invitation/i.test(error.message)) {
+          return { ok: false, message: "This invitation code can't be used. Check it, or ask for a new one." };
+        }
+        return { ok: false, message: friendly(error, "Couldn't create the account. Please try again.") };
+      }
+      return data.session ? { ok: true, message: "Welcome aboard. Your account is ready." } : checkInbox;
     },
 
     async signOut() {
@@ -165,7 +178,8 @@ export function createAuthStore(
       if (password.length < MIN_PASSWORD_LENGTH) return { ok: false, message: `Use at least ${MIN_PASSWORD_LENGTH} characters for your password.` };
       const { error } = await client.updateUser({ password });
       if (error) return { ok: false, message: friendly(error, "Couldn't update the password. Request a new reset link.") };
-      set({ recovery: false });
+      // Leaving recovery closes the form (and its message), so confirm with a notice.
+      set({ recovery: false, notice: "passwordUpdated" });
       return { ok: true, message: "Password updated." };
     },
 

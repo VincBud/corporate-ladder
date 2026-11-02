@@ -62,6 +62,10 @@ export const api = {
   importLegacy: (records: readonly GameResultRecord[]) => post<ImportResponse>("/api/career/import", { records }),
   /** Joins or transfers; requestId makes retries safe. */
   selectDepartment: (departmentId: string, requestId: string) => post<SelectDepartmentResponse>("/api/department", { departmentId, requestId }),
+  /** Whether creating an account needs a closed alpha invitation. */
+  alphaAccess: () => request<{ inviteRequired: boolean }>("/api/alpha"),
+  /** Pre-checks an invitation code (nothing is redeemed; the database enforces it at sign-up). */
+  checkInvitation: (code: string) => post<{ valid: boolean }>("/api/alpha/invitations/check", { code }),
   /** Employee Experience Survey. Retrying with the same requestId never creates a second response. */
   submitFeedback: (submission: FeedbackSubmission) => post<{ status: "created" | "duplicate"; revision: number; submittedAt: string }>("/api/feedback", submission),
   feedbackStatus: () => request<{ submitted: boolean; revision: number | null; submittedAt: string | null }>("/api/feedback/status"),

@@ -106,6 +106,10 @@ Employees join one of nine departments in the **Departments** app, get a job tit
 
 First-time visitors get a three-screen, skippable welcome ("You've been hired. Somehow.") that ends by opening Reconciliation Rush at its briefing; nothing starts until the player presses Start. It opens by itself once per browser, only for players without prior progress and never over a running round, and can be replayed from the launcher (People & Culture → Employee Orientation). The desktop checklist tracks real milestones: first assignment, career, department, Company dashboard. Signed-in employees without a department are offered one after their first assignment. Client-side only: `src/onboarding/`, `src/desktop/components/orientation.tsx`.
 
+## Closed alpha access
+
+New accounts can require a single-use invitation code (`CL-XXXX-XXXX-XXXX`), enforced inside the database for every sign-up path; guest play stays open. Codes are managed with `npm run alpha:invites` (developer only). See [docs/alpha-access.md](docs/alpha-access.md).
+
 ## Closed alpha feedback
 
 After the third completed round, players are invited (once, with at most one reminder) to the optional **Employee Experience Survey**: four 1–10 ratings and two comments. It never interrupts a round, briefing, result or the orientation, and it's always available from Launcher → People & Culture. Responses are private research data, readable only with `npm run feedback:report` (service role key). See [docs/alpha-feedback.md](docs/alpha-feedback.md).

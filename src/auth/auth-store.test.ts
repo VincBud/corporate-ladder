@@ -24,7 +24,9 @@ function fakeClient(initial: Session = null) {
       return { error: null };
     },
     async signUp({ email, options }) {
-      calls.push(`signUp:${email}:${options?.data?.display_name}:${options?.emailRedirectTo}`);
+      calls.push(`signUp:${email}:${options?.data?.display_name}:${options?.emailRedirectTo}${options?.data?.alpha_invite ? `:invite=${options.data.alpha_invite}` : ""}`);
+      if (email === "taken@b.co") return { data: { session: null }, error: { message: "User already registered" } };
+      if (email === "blocked@b.co") return { data: { session: null }, error: { message: "Database error saving new user" } };
       return { data: { session: null }, error: null };
     },
     async signOut() {
@@ -114,6 +116,26 @@ describe("auth store", () => {
     expect(calls.at(-1)).toBe("signUp:a@b.co:Alice:https://corp.example/auth/confirm");
   });
 
+  it("sends the alpha invitation with the sign-up and explains a refused invitation", async () => {
+    const { client, calls } = fakeClient();
+    const store = createAuthStore(client, { redirectBase: () => "https://corp.example" });
+    expect((await store.signUp("a@b.co", "longenough", "Alice", " CL-7K2M-9QXA-4T0B ")).ok).toBe(true);
+    expect(calls.at(-1)).toBe("signUp:a@b.co:Alice:https://corp.example/auth/confirm:invite=CL-7K2M-9QXA-4T0B");
+    // The database trigger refuses the account: Supabase reports a generic database error.
+    expect(await store.signUp("blocked@b.co", "longenough", "Alice", "CL-0000-0000-0000")).toEqual({
+      ok: false,
+      message: "This invitation code can't be used. Check it, or ask for a new one.",
+    });
+  });
+
+  it("answers a sign-up for an existing address exactly like a new one", async () => {
+    const { client } = fakeClient();
+    const store = createAuthStore(client, { redirectBase: () => "https://corp.example" });
+    const existing = await store.signUp("taken@b.co", "longenough", "Alice");
+    const fresh = await store.signUp("new@b.co", "longenough", "Alice");
+    expect(existing).toEqual(fresh);
+  });
+
   it("does not reveal whether an email has an account on password reset", async () => {
     const { client, calls } = fakeClient();
     const store = createAuthStore(client, { redirectBase: () => "https://corp.example" });
@@ -131,5 +153,7 @@ describe("auth store", () => {
     expect((await store.updatePassword("short")).ok).toBe(false);
     expect(await store.updatePassword("a-new-long-password")).toEqual({ ok: true, message: "Password updated." });
     expect(store.getState().recovery).toBe(false);
+    // The form closes, so the success is confirmed as a notice.
+    expect(store.getState().notice).toBe("passwordUpdated");
   });
 });

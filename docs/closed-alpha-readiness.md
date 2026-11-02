@@ -33,6 +33,8 @@ Everything below was checked in this audit run unless it's marked otherwise. "No
 
 **Recommendation: CONDITIONAL GO.** Launch once the four blockers are resolved; the checklist below lists the steps in order.
 
+> **Update (invite-only registration):** sign-up now requires a single-use invitation, enforced inside the database for every sign-up path (see [alpha-access.md](alpha-access.md)). This addresses M3 without disabling sign-ups. H1 (email delivery) still needs custom SMTP and a real-mailbox test, and token-hash email templates are recommended. H2–H4 are unchanged.
+
 ---
 
 ## Readiness scorecard

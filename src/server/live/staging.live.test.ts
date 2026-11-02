@@ -19,6 +19,7 @@ import { pipelineRoundFor } from "@/server/pipeline/rules";
 import type { PipelineHintResponse, StartPipelineResponse, SubmitPipelineResponse } from "@/types/pipeline-play";
 import { parseCompanySnapshot, type CompanySnapshot } from "@/simulation/source";
 import { ACHIEVEMENTS } from "@/career/achievements";
+import { generateInviteCode, inviteCodeHash } from "@/alpha/invite-code";
 import type { CareerResponse } from "@/types/cloud-career";
 import type { DailyOverview, DailyStartResponse } from "@/types/daily";
 import type { SelectDepartmentResponse } from "@/types/department-career";
@@ -1042,6 +1043,179 @@ describe.skipIf(!configured || !BASE)("live: alpha feedback", () => {
     expect((await api<{ status: string }>(null, "POST", "/api/feedback", first)).data.status).toBe("duplicate");
     const statuses: number[] = [];
     for (let i = 0; i < 6; i++) statuses.push((await api(null, "POST", "/api/feedback", guestFeedback())).status);
+    expect(statuses).toContain(429);
+  });
+});
+
+describe.skipIf(!configured || !BASE)("live: closed alpha invitations", () => {
+  // No test here sends email: confirmation and recovery links are generated with the admin API.
+  const anon = () => createClient(URL_, PUBLISHABLE, { auth: { persistSession: false, autoRefreshToken: false } });
+  const openInvites: string[] = [];
+
+  async function invite() {
+    const code = generateInviteCode();
+    const { data, error } = await admin!.rpc("create_alpha_invitations", {
+      p_code_hashes: [inviteCodeHash(code)],
+      p_expires_at: new Date(Date.now() + 3_600_000).toISOString(),
+      p_note: "live test",
+    });
+    if (error) throw error;
+    openInvites.push(data[0].id);
+    return code;
+  }
+
+  /** Creates an unconfirmed account through Supabase Auth (same insert as /signup) without sending email. */
+  async function signUpLink(email: string, code: string | null, password = PASSWORD) {
+    const result = await admin!.auth.admin.generateLink({
+      type: "signup",
+      email,
+      password,
+      options: { data: code ? { display_name: "Invited Tester", alpha_invite: code } : { display_name: "Invited Tester" } },
+    });
+    if (result.data?.user) createdUsers.push(result.data.user.id);
+    return result;
+  }
+
+  async function userByEmail(email: string) {
+    const { data } = await admin!.auth.admin.listUsers({ page: 1, perPage: 1000 });
+    return data.users.find((u) => u.email === email) ?? null;
+  }
+
+  /** Reads the Supabase session that /auth/confirm set as (possibly chunked) cookies. */
+  function sessionFromCookies(setCookies: string[]): Session {
+    const parts = setCookies
+      .map((c) => c.split(";")[0])
+      .filter((c) => /^sb-[^=]+-auth-token(\.\d+)?=/.test(c))
+      .sort()
+      .map((c) => c.slice(c.indexOf("=") + 1));
+    const value = parts.join("");
+    return JSON.parse(Buffer.from(value.replace(/^base64-/, ""), "base64url").toString("utf8")) as Session;
+  }
+
+  beforeAll(async () => {
+    const { error } = await admin!.rpc("set_alpha_invite_required", { p_required: true });
+    if (error) throw error;
+  });
+
+  afterAll(async () => {
+    // Back to staging's default (open sign-up), and no usable codes left behind.
+    await admin?.rpc("set_alpha_invite_required", { p_required: false });
+    for (const id of openInvites) await admin?.rpc("revoke_alpha_invitation", { p_id_prefix: id }).then(() => undefined, () => undefined);
+  });
+
+  it("tells the registration form that invitations are required", async () => {
+    expect((await api<{ inviteRequired: boolean }>(null, "GET", "/api/alpha")).data).toEqual({ inviteRequired: true });
+  });
+
+  it("blocks direct sign-ups through the Supabase Auth API without a valid invitation", async () => {
+    for (const [label, data] of [
+      ["no code", { display_name: "Bypass" }],
+      ["unknown code", { display_name: "Bypass", alpha_invite: generateInviteCode() }],
+      ["forged exemption", { display_name: "Bypass", test_account: true, alpha_exempt: true }],
+    ] as const) {
+      const email = `cl-live-bypass-${label.replace(/ /g, "-")}-${Date.now()}@example.com`;
+      const { error } = await anon().auth.signUp({ email, password: PASSWORD, options: { data } });
+      expect(error, label).not.toBeNull();
+      expect(await userByEmail(email), label).toBeNull();
+    }
+  });
+
+  it("pre-checks codes neutrally without redeeming them", async () => {
+    const code = await invite();
+    expect((await api<{ valid: boolean }>(null, "POST", "/api/alpha/invitations/check", { code })).data).toEqual({ valid: true });
+    expect((await api<{ valid: boolean }>(null, "POST", "/api/alpha/invitations/check", { code })).data).toEqual({ valid: true });
+    expect((await api<{ valid: boolean }>(null, "POST", "/api/alpha/invitations/check", { code: generateInviteCode() })).data).toEqual({ valid: false });
+    expect((await api<{ valid: boolean }>(null, "POST", "/api/alpha/invitations/check", { code: "' or 1=1 --" })).data).toEqual({ valid: false });
+    const response = await api(null, "POST", "/api/alpha/invitations/check", { code });
+    expect(JSON.stringify(response.data)).not.toMatch(/[0-9a-f]{64}|CL-/);
+  });
+
+  it("creates one confirmed account per invitation, end to end, and forgets the code", async () => {
+    const code = await invite();
+    const email = `cl-live-invited-${Date.now()}@example.com`;
+    const { data, error } = await signUpLink(email, code);
+    expect(error).toBeNull();
+    // The API echoes the request; what's stored is what matters: the code is gone.
+    const stored = (await admin!.auth.admin.getUserById(data.user!.id)).data.user!;
+    expect(stored.user_metadata).toEqual({ display_name: "Invited Tester" });
+    expect(stored.email_confirmed_at ?? null).toBeNull();
+    // Unconfirmed accounts can't sign in yet.
+    expect((await anon().auth.signInWithPassword({ email, password: PASSWORD })).error?.message).toMatch(/not confirmed/i);
+    // Confirmation callback (as in the email link): verified, session cookies set, back to the desktop.
+    const confirm = await fetch(`${BASE}/auth/confirm?token_hash=${data.properties!.hashed_token}&type=signup`, { redirect: "manual" });
+    expect(confirm.status).toBe(307);
+    expect(confirm.headers.get("location")).toMatch(/\/\?auth=confirmed$/);
+    expect(sessionFromCookies(confirm.headers.getSetCookie()).user.email).toBe(email);
+    expect((await anon().auth.signInWithPassword({ email, password: PASSWORD })).error).toBeNull();
+    // Single use.
+    const reuse = await signUpLink(`cl-live-reuse-${Date.now()}@example.com`, code);
+    expect(reuse.error).not.toBeNull();
+    const { data: list } = await admin!.rpc("list_alpha_invitations");
+    expect(JSON.stringify(list)).not.toContain(email);
+  });
+
+  it("lets only one of several truly concurrent sign-ups use a code", async () => {
+    const code = await invite();
+    const stamp = Date.now();
+    const results = await Promise.all(Array.from({ length: 4 }, (_, i) => signUpLink(`cl-live-race-${stamp}-${i}@example.com`, code)));
+    expect(results.filter((r) => r.error === null)).toHaveLength(1);
+    const created = await Promise.all(Array.from({ length: 4 }, (_, i) => userByEmail(`cl-live-race-${stamp}-${i}@example.com`)));
+    expect(created.filter(Boolean)).toHaveLength(1);
+  });
+
+  it("rejects revoked codes and expired or reused confirmation links", async () => {
+    const code = await invite();
+    const { data: list } = await admin!.rpc("list_alpha_invitations");
+    const id = (list as { invitations: { id: string; status: string }[] }).invitations.filter((i) => i.status === "open").at(-1)!.id;
+    expect((await admin!.rpc("revoke_alpha_invitation", { p_id_prefix: id })).error).toBeNull();
+    expect((await api<{ valid: boolean }>(null, "POST", "/api/alpha/invitations/check", { code })).data.valid).toBe(false);
+    expect((await signUpLink(`cl-live-revoked-${Date.now()}@example.com`, code)).error).not.toBeNull();
+    const bad = await fetch(`${BASE}/auth/confirm?token_hash=0000deadbeef&type=signup`, { redirect: "manual" });
+    expect(bad.headers.get("location")).toMatch(/\/\?auth=error$/);
+  });
+
+  it("resets a password through the recovery link and signs in with the new one", async () => {
+    const code = await invite();
+    const email = `cl-live-reset-${Date.now()}@example.com`;
+    const created = await signUpLink(email, code);
+    await fetch(`${BASE}/auth/confirm?token_hash=${created.data.properties!.hashed_token}&type=signup`, { redirect: "manual" });
+    const recovery = await admin!.auth.admin.generateLink({ type: "recovery", email });
+    expect(recovery.error).toBeNull();
+    const landing = await fetch(`${BASE}/auth/confirm?token_hash=${recovery.data.properties!.hashed_token}&type=recovery`, { redirect: "manual" });
+    expect(landing.headers.get("location")).toMatch(/\/\?auth=recovery$/);
+    const session = sessionFromCookies(landing.headers.getSetCookie());
+    const client = anon();
+    await client.auth.setSession({ access_token: session.access_token, refresh_token: session.refresh_token });
+    const newPassword = `${PASSWORD}-new`;
+    expect((await client.auth.updateUser({ password: newPassword })).error).toBeNull();
+    expect((await anon().auth.signInWithPassword({ email, password: PASSWORD })).error).not.toBeNull();
+    expect((await anon().auth.signInWithPassword({ email, password: newPassword })).error).toBeNull();
+    // A recovery link works once.
+    const again = await fetch(`${BASE}/auth/confirm?token_hash=${recovery.data.properties!.hashed_token}&type=recovery`, { redirect: "manual" });
+    expect(again.headers.get("location")).toMatch(/\/\?auth=error$/);
+  });
+
+  it("keeps invitations away from clients and from direct service-role access", async () => {
+    // While invitations are required, even admin-created accounts need one.
+    expect((await admin!.auth.admin.createUser({ email: `cl-live-noinvite-${Date.now()}@example.com`, password: PASSWORD, email_confirm: true, app_metadata: { test_account: true } })).error).not.toBeNull();
+    const email = `cl-live-alpha-perm-${Date.now()}@example.com`;
+    const created = await admin!.auth.admin.createUser({ email, password: PASSWORD, email_confirm: true, user_metadata: { display_name: "Perm", alpha_invite: await invite() }, app_metadata: { test_account: true } });
+    expect(created.error).toBeNull();
+    createdUsers.push(created.data.user!.id);
+    const signIn = await anon().auth.signInWithPassword({ email, password: PASSWORD });
+    const player = { email, db: createClient(URL_, PUBLISHABLE, { auth: { persistSession: false }, global: { headers: { Authorization: `Bearer ${signIn.data.session!.access_token}` } } }) };
+    expect((await player.db.from("alpha_invitations").select("*")).error?.message).toMatch(/permission denied/);
+    expect((await anon().from("alpha_access_settings").select("*")).error?.message).toMatch(/permission denied/);
+    expect((await admin!.from("alpha_invitations").select("*")).error?.message).toMatch(/permission denied/);
+    expect((await player.db.rpc("set_alpha_invite_required", { p_required: false })).error).not.toBeNull();
+    expect((await anon().rpc("check_alpha_invitation", { p_code: "CL-0000-0000-0000" })).error).not.toBeNull();
+    // Existing accounts still sign in normally while invitations are required.
+    expect((await anon().auth.signInWithPassword({ email: player.email, password: PASSWORD })).error).toBeNull();
+  });
+
+  it("rate-limits the invitation pre-check per network address", async () => {
+    const statuses: number[] = [];
+    for (let i = 0; i < 12; i++) statuses.push((await api(null, "POST", "/api/alpha/invitations/check", { code: generateInviteCode() })).status);
     expect(statuses).toContain(429);
   });
 });
